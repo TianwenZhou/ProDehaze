@@ -221,7 +221,7 @@ def main():
 	seed_everything(opt.seed)
 
 	transform = torchvision.transforms.Compose([
-		torchvision.transforms.Resize(opt.input_size),
+		
 		torchvision.transforms.CenterCrop(opt.input_size),
 	])
 
@@ -317,10 +317,10 @@ def main():
 
 					noise = torch.randn_like(init_latent)
 					# If you would like to start from the intermediate steps, you can add noise to LR to the specific steps.
-					t = repeat(torch.tensor([999]), '1 -> b', b=init_image.size(0))
-					t = t.to(device).long()
+					# t = repeat(torch.tensor([999]), '1 -> b', b=init_image.size(0))
+					# t = t.to(device).long()
 					# x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
-					x_T = None
+					x_T = noise
 
 					samples, _ = model.sample(cond=semantic_c, struct_cond=init_latent, batch_size=init_image.size(0), timesteps=opt.ddpm_steps, time_replace=opt.ddpm_steps, x_T=x_T, return_intermediates=True)
 					# x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
@@ -329,7 +329,7 @@ def main():
 						x_samples = adaptive_instance_normalization(x_samples, init_image)
 					elif opt.colorfix_type == 'wavelet':
 						x_samples = wavelet_reconstruction(x_samples, init_image)
-					x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
+					x_samples = torch.clamp((x_samples+1.0)/2, min=0, max=1.0)
 					# count += 1
 					# if count==5:
 					# 	tic = time.time()

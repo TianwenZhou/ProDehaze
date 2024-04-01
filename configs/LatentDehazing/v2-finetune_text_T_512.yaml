@@ -19,7 +19,7 @@ model:
     scale_factor: 0.18215
     use_ema: False
     # for training only
-    ckpt_path:  /home/intern/ztw/ztw/Methods/Difflare/src/stable_diffusion-v2-1_512/v2-1_512-ema-pruned.ckpt
+    ckpt_path:  /home/intern/ztw/ztw/ztw/Methods/Difflare/src/stable_diffusion-v2-1_512/v2-1_512-ema-pruned.ckpt
     unfrozen_diff: False
     random_size: False
     time_replace: 1000
@@ -52,7 +52,7 @@ model:
       target: ldm.models.autoencoder.AutoencoderKL
       params:
         # for training only
-        ckpt_path: /home/intern/ztw/ztw/Methods/Difflare/src/stable_diffusion-v2-1_512/v2-1_512-ema-pruned.ckpt
+        ckpt_path: /home/intern/ztw/ztw/ztw/Methods/Difflare/src/stable_diffusion-v2-1_512/v2-1_512-ema-pruned.ckpt
         embed_dim: 4
         monitor: val/rec_loss
         ddconfig:
@@ -113,15 +113,16 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 3
+    batch_size: 12
     num_workers: 6
     wrap: false
     train:
       target: basicsr.data.reside_dataset.RESIDEDataset
       params:
         phase : train
-        gt_path: '/data/RESIDE_new/HR'
-        dataroot_depth: '/data/RESIDE_new/HR_depth'
+        gt_path: '/home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR'
+        dataroot_depth: '/home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR_depth'
+        ref_path: '/home/intern/ztw/ztw/ztw/Data/RESIDE_ours/HR_hazy_src'
         crop_size: 512
         io_backend:
           type: disk
@@ -130,11 +131,11 @@ data:
     validation:
       target: basicsr.data.paired_image_dataset.PairedImageDataset
       params:
-        dataroot_gt: '/data/I-HAZE-PROCESS/HR'
-        dataroot_lq: '/data/I-HAZE-PROCESS/HR_hazy'
-        crop_size: 512
+        dataroot_gt: '/home/intern/ztw/ztw/ztw/Data/I-HAZE-PROCESS/HR'
+        dataroot_lq: '/home/intern/ztw/ztw/ztw/Data/I-HAZE-PROCESS/HR_hazy'
+        
         scale : 1
-        phase : train
+        phase : val
         io_backend:
           type: disk
 
@@ -170,8 +171,8 @@ test_data:
     # used to be basicsr.data.realesrgan_dataset.RealESRGANDataset
       target: basicsr.data.paired_image_dataset.PairedImageDataset
       params:
-        dataroot_gt: '/home/intern/ztw/ztw/Methods/Difflare/data/Flare7Kpp/test_data/real/gt'
-        dataroot_lq: '/home/intern/ztw/ztw/Methods/Difflare/data/Flare7Kpp/test_data/real/input'
+        dataroot_gt: '/home/intern/ztw/ztw/ztw/Methods/Difflare/data/Flare7Kpp/test_data/real/gt'
+        dataroot_lq: '/home/intern/ztw/ztw/ztw/Methods/Difflare/data/Flare7Kpp/test_data/real/input'
         crop_size: 512
         scale : 1
         phase : train
@@ -203,16 +204,16 @@ test_data:
 lightning:
   modelcheckpoint:
     params:
-      every_n_train_steps: 1500
+      every_n_train_steps: 200
   callbacks:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 1500
+        batch_frequency: 1000
         max_images: 1
         increase_log_steps: False
 
   trainer:
     benchmark: True
     max_steps: 800000
-    accumulate_grad_batches: 4
+    accumulate_grad_batches: 8
