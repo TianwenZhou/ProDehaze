@@ -45,13 +45,25 @@ data:
     train:
       target: basicsr.data.single_image_dataset.SingleImageNPDataset
       params:
-        gt_path: ['/root/autodl-tmp/StableSR/Data_for_192']
+        ckpt_path: /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000071.ckpt
+        depth_path: /home/intern/ztw/Data/RESIDE_new/HR_depth
+        gt_path: /home/intern/ztw/Data/RESIDE_new/HR
+        config: /home/intern/ztw/Methods/LatentDehazing/configs/LatentDehazing/v2-finetune_text_T_512.yaml
+        ref_path: /home/intern/ztw/Data/RESIDE_ours/HR_hazy_src
+        use_hflip: true
+        use_rot: true 
         io_backend:
           type: disk
     validation:
       target: basicsr.data.single_image_dataset.SingleImageNPDataset
       params:
-        gt_path: ['/root/autodl-tmp/StableSR/Data_for_192']
+        ckpt_path: /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000071.ckpt
+        gt_path: /home/intern/ztw/Data/RESIDE_new/HR
+        depth_path: /home/intern/ztw/Data/RESIDE_new/HR_depth
+        config: /home/intern/ztw/Methods/LatentDehazing/configs/LatentDehazing/v2-finetune_text_T_512.yaml
+        ref_path: /home/intern/ztw/Data/RESIDE_ours/HR_hazy_src
+        use_hflip: true
+        use_rot: true 
         io_backend:
           type: disk
 
@@ -63,11 +75,11 @@ lightning:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 1500
-        max_images: 4
+        batch_frequency: 10
+        max_images: 1
         increase_log_steps: False
 
   trainer:
     benchmark: True
     max_steps: 800000
-    accumulate_grad_batches: 8
+    accumulate_grad_batches: 4

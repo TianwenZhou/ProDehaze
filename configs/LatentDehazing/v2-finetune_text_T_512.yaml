@@ -3,7 +3,7 @@ model:
   base_learning_rate: 5.0e-05
   target: ldm.models.diffusion.ddpm.LatentDiffusionDehazing
   params:
-    # parameterization: "v"
+    #parameterization: "v"
     linear_start: 0.00085
     linear_end: 0.0120
     num_timesteps_cond: 1
@@ -19,7 +19,7 @@ model:
     scale_factor: 0.18215
     use_ema: False
     # for training only
-    ckpt_path:  /home/intern/ztw/ztw/ztw/Methods/Difflare/src/stable_diffusion-v2-1_512/v2-1_512-ema-pruned.ckpt
+    ckpt_path:  /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000071.ckpt
     unfrozen_diff: False
     random_size: False
     time_replace: 1000
@@ -52,7 +52,7 @@ model:
       target: ldm.models.autoencoder.AutoencoderKL
       params:
         # for training only
-        ckpt_path: /home/intern/ztw/ztw/ztw/Methods/Difflare/src/stable_diffusion-v2-1_512/v2-1_512-ema-pruned.ckpt
+        ckpt_path: /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000071.ckpt
         embed_dim: 4
         monitor: val/rec_loss
         ddconfig:
@@ -103,26 +103,22 @@ model:
         
 
 
-# corruption:
-#   name: 'Flare7K'
-#   scattering_flare_path: 'data/Flare7Kpp/Flare7K/Scattering_Flare/Compound_Flare'
-#   reflective_flare_path: 'data/Flare7Kpp/Flare7K/Reflective_Flare'
-#   gt_size: 512
+
 
 
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 12
+    batch_size: 1
     num_workers: 6
     wrap: false
     train:
       target: basicsr.data.reside_dataset.RESIDEDataset
       params:
         phase : train
-        gt_path: '/home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR'
-        dataroot_depth: '/home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR_depth'
-        ref_path: '/home/intern/ztw/ztw/ztw/Data/RESIDE_ours/HR_hazy_src'
+        gt_path: '/home/intern/ztw/Data/RESIDE_new/HR'
+        dataroot_depth: '/home/intern/ztw/Data/RESIDE_new/HR_depth'
+        ref_path: '/home/intern/ztw/Data/RESIDE_ours/HR_hazy_src'
         crop_size: 512
         io_backend:
           type: disk
@@ -131,8 +127,8 @@ data:
     validation:
       target: basicsr.data.paired_image_dataset.PairedImageDataset
       params:
-        dataroot_gt: '/home/intern/ztw/ztw/ztw/Data/I-HAZE-PROCESS/HR'
-        dataroot_lq: '/home/intern/ztw/ztw/ztw/Data/I-HAZE-PROCESS/HR_hazy'
+        dataroot_gt: '/home/intern/ztw/Data/I-HAZE-PROCESS/HR'
+        dataroot_lq: '/home/intern/ztw/Data/I-HAZE-PROCESS/HR_hazy'
         
         scale : 1
         phase : val

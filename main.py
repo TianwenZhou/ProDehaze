@@ -22,6 +22,12 @@ from ldm.data.base import Txt2ImgIterableBaseDataset
 from ldm.util import instantiate_from_config, instantiate_from_config_sr
 from pytorch_lightning.loggers import WandbLogger
 
+from multiprocessing import set_start_method
+try:
+    set_start_method('spawn')
+except RuntimeError:
+    pass
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 def get_parser(**parser_kwargs):
     def str2bool(v):

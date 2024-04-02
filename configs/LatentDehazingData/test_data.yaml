@@ -50,7 +50,7 @@ model:
     first_stage_config:
       target: ldm.models.autoencoder.AutoencoderKL
       params:
-        ckpt_path: /home/intern/ztw/ztw/Methods/LatentDehazing/src/stable_diffusion-v2-1_512/v2-1_512-ema-pruned.ckpt
+        ckpt_path: /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000071.ckpt
         embed_dim: 4
         monitor: val/rec_loss
         ddconfig:
@@ -132,15 +132,16 @@ data:
 test_data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 8
+    batch_size: 4
     num_workers: 6
     wrap: false
     test:
       target: basicsr.data.reside_dataset.RESIDEDataset
       params:
         phase : train
-        gt_path: '/data/RESIDE_new/HR'
-        dataroot_depth: '/data/RESIDE_new/HR_depth'
+        gt_path: '/home/intern/ztw/Data/RESIDE_new/HR'
+        dataroot_depth: '/home/intern/ztw/Data/RESIDE_new/HR_depth'
+        ref_path: '/home/intern/ztw/Data/RESIDE_ours/HR_hazy_src'
         crop_size: 512
         io_backend:
           type: disk

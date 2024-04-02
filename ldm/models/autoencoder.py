@@ -647,7 +647,7 @@ class AutoencoderKLResi(pl.LightningModule):
                 self.queue_ptr = self.queue_ptr + b
 
     def get_input(self, batch):
-        input = batch['lq']
+        input = batch['hazy']
         gt = batch['gt']
         latent = batch['latent']
         sample = batch['sample']
@@ -917,3 +917,7 @@ class AutoencoderKLResi(pl.LightningModule):
         x = F.conv2d(x, weight=self.colorize)
         x = 2.*(x-x.min())/(x.max()-x.min()) - 1.
         return x
+    
+
+
+
