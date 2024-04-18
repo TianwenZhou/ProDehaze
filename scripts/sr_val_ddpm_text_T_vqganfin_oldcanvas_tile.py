@@ -268,7 +268,7 @@ def main():
 		torchvision.transforms.CenterCrop(opt.input_size),
 	])
 
-	vqgan_config = OmegaConf.load("configs/autoencoder/autoencoder_kl_64x64x4_resi.yaml")
+	vqgan_config = OmegaConf.load("/home/intern/ztw/Methods/LatentDehazing/configs/autoencoder/autoencoder_kl_64x64x4_resi_offline.yaml")
 	vq_model = load_model_from_config(vqgan_config, opt.vqgan_ckpt)
 	vq_model = vq_model.to(device)
 	vq_model.decoder.fusion_w = opt.dec_w
@@ -372,8 +372,8 @@ def main():
 								x_T = noise
 								
 								samples, _ = model.sample_canvas(cond=semantic_c, struct_cond=init_latent, batch_size=im_lq_pch.size(0), timesteps=opt.ddpm_steps, time_replace=opt.ddpm_steps, x_T=x_T, return_intermediates=True, tile_size=int(opt.input_size/8), tile_overlap=opt.tile_overlap, batch_size_sample=opt.n_samples)
-								# _, enc_fea_lq = vq_model.encode(im_lq_pch)
-								# x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
+								_, enc_fea_lq = vq_model.encode(im_lq_pch)
+								x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
 								x_samples = model.decode_first_stage(samples)
 								if opt.colorfix_type == 'adain':
 									x_samples = adaptive_instance_normalization(x_samples, im_lq_pch)
@@ -383,6 +383,7 @@ def main():
 							im_sr = im_spliter.gather()
 							im_sr = torch.clamp((im_sr+1.0)/2.0, min=0.0, max=1.0)
 						else:
+							
 							init_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_bs))  # move to latent space
 							text_init = ['']*opt.n_samples
 							semantic_c = model.cond_stage_model(text_init)
@@ -390,16 +391,16 @@ def main():
 							# If you would like to start from the intermediate steps, you can add noise to LR to the specific steps.
 							t = repeat(torch.tensor([999]), '1 -> b', b=im_lq_bs.size(0))
 							t = t.to(device).long()
-							# x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
-							x_T = noise
+							x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
+							# x_T = noise
 							samples, _ = model.sample_canvas(cond=semantic_c, struct_cond=init_latent, batch_size=im_lq_bs.size(0), timesteps=opt.ddpm_steps, time_replace=opt.ddpm_steps, x_T=x_T, return_intermediates=True, tile_size=int(opt.input_size/8), tile_overlap=opt.tile_overlap, batch_size_sample=opt.n_samples)
-							# _, enc_fea_lq = vq_model.encode(im_lq_bs)
-							# x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
-							x_samples = model.decode_first_stage(samples)
-							encoded_lq = model.encode_first_stage(cur_image)
-							z_lq = model.get_first_stage_encoding(encoded_lq)
-							recon_lq = model.decode_first_stage(z_lq)
-							x_samples = merge(recon_lq, x_samples, cur_image)
+							_, enc_fea_lq = vq_model.encode(im_lq_bs)
+							x_samples = vq_model.decode(samples, enc_fea_lq)
+							# x_samples = model.decode_first_stage(samples)
+							# encoded_lq = model.encode_first_stage(cur_image)
+							# z_lq = model.get_first_stage_encoding(encoded_lq)
+							# recon_lq = model.decode_first_stage(z_lq)
+							# x_samples = merge(recon_lq, x_samples, cur_image)
 							if opt.colorfix_type == 'adain':
 								x_samples = adaptive_instance_normalization(x_samples, im_lq_bs)
 							elif opt.colorfix_type == 'wavelet':

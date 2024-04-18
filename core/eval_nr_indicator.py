@@ -4,7 +4,6 @@ import os
 from pyiqa import create_metric
 from tqdm import tqdm
 import shutil
-from core.Metrics import calculate_psnr,calculate_ssim
 
 
 def main():

@@ -98,8 +98,9 @@ def load_model_from_config(config, ckpt, verbose=False):
 	model.eval()
 	return model
 
-def load_img(path):
+def load_img(path, input_size):
 	image = Image.open(path).convert("RGB")
+	image = image.resize((input_size, input_size))
 	w, h = image.size
 	print(f"loaded input image of size ({w}, {h}) from {path}")
 	w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
@@ -213,7 +214,7 @@ def main():
 		print('No color correction')
 	print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
 
-	vqgan_config = OmegaConf.load("configs/autoencoder/autoencoder_kl_64x64x4_resi.yaml")
+	vqgan_config = OmegaConf.load("/home/intern/ztw/Methods/LatentDehazing/configs/autoencoder/autoencoder_kl_64x64x4_resi_offline.yaml")
 	vq_model = load_model_from_config(vqgan_config, opt.vqgan_ckpt)
 	vq_model = vq_model.to(device)
 	vq_model.decoder.fusion_w = opt.dec_w
@@ -241,8 +242,8 @@ def main():
 		if os.path.exists(os.path.join(outpath, item)):
 			img_list.remove(item)
 			continue
-		cur_image = load_img(os.path.join(opt.init_img, item)).to(device)
-		cur_image = transform(cur_image)
+		cur_image = load_img(os.path.join(opt.init_img, item), opt.input_size).to(device)
+		# cur_image = transform(cur_image)
 		cur_image = cur_image.clamp(-1, 1)
 		init_image_list.append(cur_image)
 	init_image_list = torch.cat(init_image_list, dim=0)
@@ -308,11 +309,9 @@ def main():
 				count = 0
 				for n in trange(niters, desc="Sampling"):
 					init_image = init_image_list[n]
-					# init_latent_generator, enc_fea_lq = vq_model.encode(init_image)
-					# init_latent = model.get_first_stage_encoding(init_latent_generator)
-					init_latent = model.encode_first_stage(init_image)
-					init_latent = model.get_first_stage_encoding(init_latent)
-					text_init = ['']*init_image.size(0)
+					init_latent = model.get_first_stage_encoding(model.encode_first_stage(init_image))
+				
+					text_init = text_init = ['(masterpiece:2), (best quality:2), (realistic:2), (very clear:2)']*init_image.size(0)*init_image.size(0)
 					semantic_c = model.cond_stage_model(text_init)
 
 					noise = torch.randn_like(init_latent)
@@ -322,9 +321,13 @@ def main():
 					# x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
 					x_T = noise
 
+					
 					samples, _ = model.sample(cond=semantic_c, struct_cond=init_latent, batch_size=init_image.size(0), timesteps=opt.ddpm_steps, time_replace=opt.ddpm_steps, x_T=x_T, return_intermediates=True)
-					# x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
-					x_samples = model.decode_first_stage(samples)
+					_, enc_fea_lq = vq_model.encode(init_image)					
+					x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
+					# x_samples = model.decode_first_stage(samples)
+
+					
 					if opt.colorfix_type == 'adain':
 						x_samples = adaptive_instance_normalization(x_samples, init_image)
 					elif opt.colorfix_type == 'wavelet':
