@@ -311,7 +311,7 @@ def main():
 					init_image = init_image_list[n]
 					init_latent = model.get_first_stage_encoding(model.encode_first_stage(init_image))
 				
-					text_init = text_init = ['(masterpiece:2), (best quality:2), (realistic:2), (very clear:2)']*init_image.size(0)*init_image.size(0)
+					text_init = text_init = ['(masterpiece:2), (best quality:2), (realistic:2), (very clear:2),(haze free:2)']*init_image.size(0)*init_image.size(0)
 					semantic_c = model.cond_stage_model(text_init)
 
 					noise = torch.randn_like(init_latent)

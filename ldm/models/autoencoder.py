@@ -1,5 +1,7 @@
 import torch
+import numpy as np
 import pytorch_lightning as pl
+import cv2
 import torch.nn.functional as F
 from contextlib import contextmanager
 
@@ -13,6 +15,7 @@ from ldm.util import instantiate_from_config
 from basicsr.utils import DiffJPEG, USMSharp
 from basicsr.utils.img_process_util import filter2D
 from basicsr.data.transforms import paired_random_crop, triplet_random_crop
+from basicsr.utils.img_util import img2tensor, tensor2img
 from basicsr.data.degradations import random_add_gaussian_noise_pt, random_add_poisson_noise_pt, random_add_speckle_noise_pt, random_add_saltpepper_noise_pt
 import random
 
@@ -570,8 +573,8 @@ class AutoencoderKLResi(pl.LightningModule):
             print(f"Unexpected Keys: {unexpected}")
         return missing
 
-    def encode(self, x):
-        h, enc_fea = self.encoder(x, return_fea=True)
+    def encode(self, x, mask=None):
+        h, enc_fea = self.encoder(x, mask, return_fea=True)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
         # posterior = h
@@ -583,15 +586,20 @@ class AutoencoderKLResi(pl.LightningModule):
         posterior = DiagonalGaussianDistribution(moments)
         return posterior, moments
 
-    def decode(self, z, enc_fea):
+    def decode(self, z, enc_fea, mask=None):
         z = self.post_quant_conv(z)
-        dec = self.decoder(z, enc_fea)
+        dec = self.decoder(z, enc_fea, mask)
         return dec
 
-    def forward(self, input, latent, sample_posterior=True):
-        posterior, enc_fea_lq = self.encode(input)
-        dec = self.decode(latent, enc_fea_lq)
-        return dec, posterior
+    def forward(self, input, latent, mask=None, sample_posterior=True):
+
+        dark = self.get_dark_channel(input)
+        device = input.device
+        dark = dark.to(device)
+        posterior, enc_fea_lq = self.encode(input, dark)
+        dec = self.decode(latent, enc_fea_lq, dark)
+        dark = dark.unsqueeze(0)
+        return dec, posterior, dark
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self):
@@ -663,6 +671,18 @@ class AutoencoderKLResi(pl.LightningModule):
         sample = sample * 2.0 -1.0
 
         return input, gt, latent, sample
+    
+    def get_dark_channel(self, img, sz=15):
+        
+        img = tensor2img(img, True, np.float64)
+        img = img[0]
+        b,g,r = cv2.split(img)
+        dc = cv2.min(cv2.min(r,g),b)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT,(sz,sz))
+        dark = cv2.erode(dc, kernel)
+        dark = torch.from_numpy(dark)
+        return dark
+
 
     @torch.no_grad()
     def get_input_synthesis(self, batch, val=False, test_gt=False):
@@ -836,7 +856,7 @@ class AutoencoderKLResi(pl.LightningModule):
             inputs, gts, latents, _ = self.get_input_synthesis(batch, val=False)
         else:
             inputs, gts, latents, _ = self.get_input(batch)
-        reconstructions, posterior = self(inputs, latents)
+        reconstructions, posterior, mask = self(inputs, latents)
 
         if optimizer_idx == 0:
             # train encoder+decoder+logvar
@@ -858,7 +878,7 @@ class AutoencoderKLResi(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         inputs, gts, latents, _ = self.get_input(batch)
 
-        reconstructions, posterior = self(inputs, latents)
+        reconstructions, posterior, mask = self(inputs, latents)
         aeloss, log_dict_ae = self.loss(gts, reconstructions, posterior, 0, self.global_step,
                                         last_layer=self.get_last_layer(), split="val")
 
@@ -895,7 +915,7 @@ class AutoencoderKLResi(pl.LightningModule):
         latents = latents.to(self.device)
         samples = samples.to(self.device)
         if not only_inputs:
-            xrec, posterior = self(x, latents)
+            xrec, posterior, mask = self(x, latents)
             if x.shape[1] > 3:
                 # colorize with random projection
                 assert xrec.shape[1] > 3
@@ -906,6 +926,7 @@ class AutoencoderKLResi(pl.LightningModule):
             # log["samples"] = self.decode(torch.randn_like(posterior.sample()))
             log["reconstructions"] = xrec
         log["inputs"] = x
+        log["masks"] = mask
         log["gts"] = gts
         log["samples"] = samples
         return log
