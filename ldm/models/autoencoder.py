@@ -9,7 +9,15 @@ from src.taming.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantize
 
 from ldm.modules.diffusionmodules.model import Encoder, Decoder, Decoder_Mix
 from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
-
+from ldm.modules.diffusionmodules.util import (
+    checkpoint,
+    conv_nd,
+    linear,
+    avg_pool_nd,
+    zero_module,
+    normalization,
+    timestep_embedding,
+)
 from ldm.util import instantiate_from_config
 
 from basicsr.utils import DiffJPEG, USMSharp
@@ -489,6 +497,10 @@ class AutoencoderKLResi(pl.LightningModule):
         self.image_key = image_key
         self.encoder = Encoder(**ddconfig)
         self.decoder = Decoder_Mix(**ddconfig)
+        self.mask_proj = torch.nn.Sequential(
+            torch.nn.SiLU(),
+            conv_nd(2, 1, 1, 3, padding=1),
+        )
         self.decoder.fusion_w = fusion_w
         self.loss = instantiate_from_config(lossconfig)
         self.quant_conv = torch.nn.Conv2d(2*ddconfig["z_channels"], 2*embed_dim, 1)
@@ -596,6 +608,8 @@ class AutoencoderKLResi(pl.LightningModule):
         dark = self.get_dark_channel(input)
         device = input.device
         dark = dark.to(device)
+        dark = dark.float().unsqueeze(0)
+        dark = self.mask_proj(dark)
         posterior, enc_fea_lq = self.encode(input, dark)
         dec = self.decode(latent, enc_fea_lq, dark)
         dark = dark.unsqueeze(0)

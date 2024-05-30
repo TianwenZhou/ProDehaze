@@ -285,6 +285,7 @@ class SpatialAwareAttnBlock(nn.Module):
         # compute attention mask 
         if mask is not None:
             mask = mask.float()
+            mask = mask.squeeze(0)
             height = mask.shape[0]
             width = mask.shape[1]
             mask = mask.reshape(1, height, width)
@@ -780,6 +781,7 @@ class Decoder_Mix(nn.Module):
         self.z_shape = (1,z_channels,curr_res,curr_res)
         print("Working with z of shape {} = {} dimensions.".format(
             self.z_shape, np.prod(self.z_shape)))
+        
 
         # z to block_in
         self.conv_in = torch.nn.Conv2d(z_channels,
