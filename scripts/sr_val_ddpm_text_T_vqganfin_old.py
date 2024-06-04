@@ -311,7 +311,7 @@ def main():
 					init_image = init_image_list[n]
 					init_latent = model.get_first_stage_encoding(model.encode_first_stage(init_image))
 				
-					text_init = text_init = ['(masterpiece:2), (best quality:2), (realistic:2), (very clear:2),(haze free:2)']*init_image.size(0)*init_image.size(0)
+					text_init = text_init = ['(masterpiece:2), (best quality:2), (realistic:2), (very clear:2),(haze-free:2)']*init_image.size(0)
 					semantic_c = model.cond_stage_model(text_init)
 
 					noise = torch.randn_like(init_latent)
@@ -323,8 +323,8 @@ def main():
 
 					
 					samples, _ = model.sample(cond=semantic_c, struct_cond=init_latent, batch_size=init_image.size(0), timesteps=opt.ddpm_steps, time_replace=opt.ddpm_steps, x_T=x_T, return_intermediates=True)
-					_, enc_fea_lq = vq_model.encode(init_image)					
-					x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
+					_, enc_fea_lq, high_freq_fea = vq_model.encode(init_image)					
+					x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq, high_freq_fea)
 					# x_samples = model.decode_first_stage(samples)
 
 					

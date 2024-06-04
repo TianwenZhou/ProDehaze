@@ -347,8 +347,8 @@ class AutoencoderKL(pl.LightningModule):
         # if len(unexpected) > 0:
         #     print(f"Unexpected Keys: {unexpected}")
 
-    def encode(self, x, return_encfea=False):
-        h = self.encoder(x)
+    def encode(self, x, mask=None, return_encfea=False, return_high_freq=False):
+        h = self.encoder(x, mask=None, return_fea=False, return_high_freq=False)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
         if return_encfea:
@@ -586,11 +586,11 @@ class AutoencoderKLResi(pl.LightningModule):
         return missing
 
     def encode(self, x, mask=None):
-        h, enc_fea = self.encoder(x, mask, return_fea=True)
+        h, enc_fea, high_freq_fea = self.encoder(x, mask, return_fea=True, return_high_freq=True)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
         # posterior = h
-        return posterior, enc_fea
+        return posterior, enc_fea, high_freq_fea
 
     def encode_gt(self, x, new_encoder):
         h = new_encoder(x)
@@ -598,9 +598,9 @@ class AutoencoderKLResi(pl.LightningModule):
         posterior = DiagonalGaussianDistribution(moments)
         return posterior, moments
 
-    def decode(self, z, enc_fea, mask=None):
+    def decode(self, z, enc_fea, high_freq_fea, freq_merge=True, mask=None):
         z = self.post_quant_conv(z)
-        dec = self.decoder(z, enc_fea, mask)
+        dec = self.decoder(z, enc_fea, high_freq_fea, freq_merge, mask)
         return dec
 
     def forward(self, input, latent, mask=None, sample_posterior=True):
@@ -609,9 +609,10 @@ class AutoencoderKLResi(pl.LightningModule):
         device = input.device
         dark = dark.to(device)
         dark = dark.float().unsqueeze(0)
-        dark = self.mask_proj(dark)
-        posterior, enc_fea_lq = self.encode(input, dark)
-        dec = self.decode(latent, enc_fea_lq, dark)
+        # dark = self.mask_proj(dark)
+        posterior, enc_fea_lq, high_freq_fea = self.encode(input, dark)
+        freq_merge = True
+        dec = self.decode(latent, enc_fea_lq, high_freq_fea, freq_merge,dark)
         dark = dark.unsqueeze(0)
         return dec, posterior, dark
 

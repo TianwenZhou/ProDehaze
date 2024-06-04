@@ -537,12 +537,43 @@ class Model(nn.Module):
     def get_last_layer(self):
         return self.conv_out.weight
 
+def dwt_init(x):
+    x01 = x[:, :, 0::2, :] / 2   #x01.shape=[4,3,128,256]   从0开始，每隔两个取出，#像素值还要除以2    0,2,4,6...254-->0,1,2,...127
+    x02 = x[:, :, 1::2, :] / 2   #x02.shape=[4,3,128,256]   从1开始，每隔两个取出，#像素值还要除以2    1,3,5,7...255-->0,1,2,...127 
+    x1 = x01[:, :, :, 0::2]    #x1.shape=[4,3,128,128]   从0取出      0,2,4,6...254-->0,1,2,...127
+    x2 = x02[:, :, :, 0::2]       #x2.shape=[4,3,128,128]   从0取出
+    x3 = x01[:, :, :, 1::2]     #x3.shape=[4,3,128,128]   从1取出     1,3,5,7...255-->0,1,2,...127 
+    x4 = x02[:, :, :, 1::2]  #x4.shape=[4,3,128,128]   从1取出
+    x_LL = x1 + x2 + x3 + x4
+    x_HL = -x1 - x2 + x3 + x4
+    x_LH = -x1 + x2 - x3 + x4
+    x_HH = x1 - x2 - x3 + x4
+    return x_LL, torch.cat((x_HL, x_LH, x_HH), 1)
+
+class DWT(nn.Module):
+    def __init__(self):
+        super(DWT, self).__init__()
+        self.requires_grad = False
+    def forward(self, x):
+        return dwt_init(x)
+
+class DWT_transform(nn.Module):
+    def __init__(self, in_channels,out_channels):
+        super().__init__()
+        self.dwt = DWT()
+        self.conv1x1_low = nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0)
+        self.conv1x1_high = nn.Conv2d(in_channels*3, out_channels, kernel_size=1, padding=0)
+    def forward(self, x):
+        dwt_low_frequency,dwt_high_frequency = self.dwt(x)
+        dwt_low_frequency = self.conv1x1_low(dwt_low_frequency)
+        dwt_high_frequency = self.conv1x1_high(dwt_high_frequency)
+        return dwt_low_frequency,dwt_high_frequency
 
 class Encoder(nn.Module):
     def __init__(self, *, ch, out_ch, ch_mult=(1,2,4,8), num_res_blocks,
                  attn_resolutions, dropout=0.0, resamp_with_conv=True, in_channels,
                  resolution, z_channels, double_z=True, use_linear_attn=False, use_spatial_attn=True, attn_type="vanilla",
-                 **ignore_kwargs):
+                **ignore_kwargs):
         super().__init__()
         if use_linear_attn: attn_type = "linear"
         if use_spatial_attn: attn_type = "spatial"
@@ -568,6 +599,7 @@ class Encoder(nn.Module):
         for i_level in range(self.num_resolutions): # num_resolution = 4
             block = nn.ModuleList()
             attn = nn.ModuleList()
+
             block_in = ch*in_ch_mult[i_level]
             block_out = ch*ch_mult[i_level]
             for i_block in range(self.num_res_blocks):
@@ -575,6 +607,7 @@ class Encoder(nn.Module):
                                          out_channels=block_out,
                                          temb_channels=self.temb_ch,
                                          dropout=dropout))
+                
                 block_in = block_out
                 if curr_res in attn_resolutions:
                     attn.append(make_attn(block_in, attn_type=attn_type))
@@ -583,8 +616,10 @@ class Encoder(nn.Module):
             down.attn = attn
             if i_level != self.num_resolutions-1:
                 down.downsample = Downsample(block_in, resamp_with_conv)
+                down.dwt = DWT_transform(block_in, block_out)
                 curr_res = curr_res // 2
             self.down.append(down)
+            
 
         # middle
         self.mid = nn.Module()
@@ -606,45 +641,87 @@ class Encoder(nn.Module):
                                         stride=1,
                                         padding=1)
 
-    def forward(self, x, mask=None, return_fea=False):
+    def forward(self, x, mask=None, return_fea=False, return_high_freq=True):
         # timestep embedding
         if self.use_spatial_attn == False:
             mask = None
         temb = None
+        if return_high_freq == False: 
+            # downsampling
+            hs = [self.conv_in(x)]
+            fea_list = []
+            for i_level in range(self.num_resolutions): # i_level = 0,1,2,3
+                for i_block in range(self.num_res_blocks): # resblocks : 2
+                    h = self.down[i_level].block[i_block](hs[-1], temb)
+                    if len(self.down[i_level].attn) > 0:
+                        h = self.down[i_level].attn[i_block](h, mask)
+                        #h = self.down[i_level].attn[i_block](h)
+                    hs.append(h)
+                if return_fea:
+                    if i_level==1 or i_level==2:
+                        fea_list.append(h)
+                if i_level != self.num_resolutions-1:
+                    hs.append(self.down[i_level].downsample(hs[-1]))
 
-        # downsampling
-        hs = [self.conv_in(x)]
-        fea_list = []
-        for i_level in range(self.num_resolutions): # i_level = 0,1,2,3
-            for i_block in range(self.num_res_blocks): # resblocks : 2
-                h = self.down[i_level].block[i_block](hs[-1], temb)
-                if len(self.down[i_level].attn) > 0:
-                    h = self.down[i_level].attn[i_block](h, mask)
-                    #h = self.down[i_level].attn[i_block](h)
-                hs.append(h)
+            # middle
+            h = hs[-1]
+            h = self.mid.block_1(h, temb)
+            h = self.mid.attn_1(h, mask)
+            # h = self.mid.attn_1(h)
+            h = self.mid.block_2(h, temb)
+
+
+            # end
+            h = self.norm_out(h)
+            h = nonlinearity(h)
+            h = self.conv_out(h)
+
             if return_fea:
-                if i_level==1 or i_level==2:
-                    fea_list.append(h)
-            if i_level != self.num_resolutions-1:
-                hs.append(self.down[i_level].downsample(hs[-1]))
+                return h, fea_list
+            return h
 
-        # middle
-        h = hs[-1]
-        h = self.mid.block_1(h, temb)
-        h = self.mid.attn_1(h, mask)
-        # h = self.mid.attn_1(h)
-        h = self.mid.block_2(h, temb)
+        else:
+            hs = [self.conv_in(x)]
+            fea_list = []
+            high_freq_fea = []
+            for i_level in range(self.num_resolutions): # i_level = 0,1,2,3
+                for i_block in range(self.num_res_blocks): # resblocks : 2
+                    h = self.down[i_level].block[i_block](hs[-1], temb)
+                    if len(self.down[i_level].attn) > 0:
+                        h = self.down[i_level].attn[i_block](h, mask)
+                        #h = self.down[i_level].attn[i_block](h)
+                    hs.append(h)
+                if return_fea:
+                    if i_level==1 or i_level==2:
+                        fea_list.append(h)
+                if i_level != self.num_resolutions-1:
+                    hs_ = hs[-1]
+                    hs_down = self.down[i_level].downsample(hs[-1])
+                    dwt_low, dwt_high = self.down[i_level].dwt(hs_)
+                    hs[-1].squeeze(0)
+                    hs_out = hs_down + dwt_low # TODO:correct channel num
+                    hs.append(hs_out)
+                    high_freq_fea.append(dwt_high)
+                    
+                
+
+            # middle
+            h = hs[-1]
+            h = self.mid.block_1(h, temb)
+            h = self.mid.attn_1(h, mask)
+            # h = self.mid.attn_1(h)
+            h = self.mid.block_2(h, temb)
 
 
-        # end
-        h = self.norm_out(h)
-        h = nonlinearity(h)
-        h = self.conv_out(h)
+            # end
+            h = self.norm_out(h)
+            h = nonlinearity(h)
+            h = self.conv_out(h)
 
-        if return_fea:
-            return h, fea_list
-
-        return h
+            if return_fea:
+                return h, fea_list, high_freq_fea
+            return h, high_freq_fea
+        
 
 class Decoder(nn.Module):
     def __init__(self, *, ch, out_ch, ch_mult=(1,2,4,8), num_res_blocks,
@@ -841,7 +918,7 @@ class Decoder_Mix(nn.Module):
                                         stride=1,
                                         padding=1)
 
-    def forward(self, z, enc_fea, mask=None):
+    def forward(self, z, enc_fea, high_freq_fea, freq_merge=True, mask=None):
         if self.use_spatial_attn == False:
             mask = None
         #assert z.shape[1:] == self.z_shape[1:]
@@ -849,41 +926,88 @@ class Decoder_Mix(nn.Module):
 
         # timestep embedding
         temb = None
+        if freq_merge == False: 
+            # z to block_in
+            h = self.conv_in(z)
 
-        # z to block_in
-        h = self.conv_in(z)
+            # middle
+            h = self.mid.block_1(h, temb)
+            # h = self.mid.attn_1(h)
+            h = self.mid.attn_1(h, mask)
+            h = self.mid.block_2(h, temb)
 
-        # middle
-        h = self.mid.block_1(h, temb)
-        # h = self.mid.attn_1(h)
-        h = self.mid.attn_1(h, mask)
-        h = self.mid.block_2(h, temb)
+            # upsampling
+            for i_level in reversed(range(self.num_resolutions)):
+                for i_block in range(self.num_res_blocks+1): # num_res_blocks+1= 3
+                    h = self.up[i_level].block[i_block](h, temb)
+                    if len(self.up[i_level].attn) > 0:
+                        h = self.up[i_level].attn[i_block](h, mask)
+                        # h = self.up[i_level].attn[i_block](h)
 
-        # upsampling
-        for i_level in reversed(range(self.num_resolutions)):
-            for i_block in range(self.num_res_blocks+1): # num_res_blocks+1= 3
-                h = self.up[i_level].block[i_block](h, temb)
-                if len(self.up[i_level].attn) > 0:
-                    h = self.up[i_level].attn[i_block](h, mask)
-                    # h = self.up[i_level].attn[i_block](h)
+                if i_level != self.num_resolutions-1 and i_level != 0:
+                    # i_level = 2, 1
+                    cur_fuse_layer = getattr(self, 'fusion_layer_{}'.format(i_level))
+                    h = cur_fuse_layer(enc_fea[i_level-1], h, self.fusion_w)
 
-            if i_level != self.num_resolutions-1 and i_level != 0:
-                # i_level = 2, 1
-                cur_fuse_layer = getattr(self, 'fusion_layer_{}'.format(i_level))
-                h = cur_fuse_layer(enc_fea[i_level-1], h, self.fusion_w)
+                if i_level != 0:
+                    
+                    h = self.up[i_level].upsample(h)
+            # end
+            if self.give_pre_end:
+                return h
 
-            if i_level != 0:
-                h = self.up[i_level].upsample(h)
-        # end
-        if self.give_pre_end:
+            h = self.norm_out(h)
+            h = nonlinearity(h)
+            h = self.conv_out(h)
+            if self.tanh_out:
+                h = torch.tanh(h)
             return h
 
-        h = self.norm_out(h)
-        h = nonlinearity(h)
-        h = self.conv_out(h)
-        if self.tanh_out:
-            h = torch.tanh(h)
-        return h
+        if freq_merge == True:
+            # z to block_in
+            h = self.conv_in(z)
+
+            # middle
+            h = self.mid.block_1(h, temb)
+            # h = self.mid.attn_1(h)
+            h = self.mid.attn_1(h, mask)
+            h = self.mid.block_2(h, temb)
+
+            # upsampling
+            for i_level in reversed(range(self.num_resolutions)):
+                for i_block in range(self.num_res_blocks+1): # num_res_blocks+1= 3
+                    h = self.up[i_level].block[i_block](h, temb)
+                    if len(self.up[i_level].attn) > 0:
+                        h = self.up[i_level].attn[i_block](h, mask)
+                        h = high_freq_fea[i_level-1] + h
+                        # h = self.up[i_level].attn[i_block](h)
+
+                if i_level != self.num_resolutions-1 and i_level != 0:
+                    # i_level = 2, 1
+                    #print(i_level)
+                    cur_fuse_layer = getattr(self, 'fusion_layer_{}'.format(i_level))
+                    h = cur_fuse_layer(enc_fea[i_level-1], h, self.fusion_w)
+                    
+                    
+
+                if i_level != 0:
+                    
+                    # if i_level == 3:
+                    #     h = high_freq_fea[i_level-1] + h
+                    #     h = self.up[i_level].upsample(h)
+                    # else:
+                    h = self.up[i_level].upsample(h)
+            # end
+            if self.give_pre_end:
+                return h
+
+            h = self.norm_out(h)
+            h = nonlinearity(h)
+            h = self.conv_out(h)
+            if self.tanh_out:
+                h = torch.tanh(h)
+            return h
+
 
 class ResBlock(nn.Module):
     def __init__(self, in_channels, out_channels=None):
