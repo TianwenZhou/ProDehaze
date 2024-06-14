@@ -25,7 +25,7 @@ import math
 import copy
 
 from basicsr.utils import DiffJPEG
-from basicsr.data.reside_dataset import RESIDEDataset
+from basicsr.data.crop_dataset import PairedImageDataset
 from torch.utils.data import random_split, DataLoader, Dataset, Subset
 
 def calc_mean_std(feat, eps=1e-5):
@@ -330,7 +330,7 @@ def main():
     base_i = opt.base_i
 
     # data
-    dataset = RESIDEDataset(config.test_data.params.test.params)
+    dataset = PairedImageDataset(config.test_data.params.test.params)
     test_dataloader = DataLoader(
         dataset,
         batch_size=config.test_data.params.batch_size,

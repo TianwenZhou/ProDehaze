@@ -214,7 +214,7 @@ def main():
 		print('No color correction')
 	print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
 
-	vqgan_config = OmegaConf.load("/home/intern/ztw/Methods/LatentDehazing/configs/autoencoder/autoencoder_kl_64x64x4_resi_offline.yaml")
+	vqgan_config = OmegaConf.load("/home/intern/ztw/Methods/LatentDehazing/configs/autoencoder/autoencoder_kl_64x64x4_resi_crop.yaml")
 	vq_model = load_model_from_config(vqgan_config, opt.vqgan_ckpt)
 	vq_model = vq_model.to(device)
 	vq_model.decoder.fusion_w = opt.dec_w

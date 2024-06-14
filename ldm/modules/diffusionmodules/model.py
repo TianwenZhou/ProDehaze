@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from einops import rearrange
-
+from matplotlib import pyplot as plt
 from ldm.util import instantiate_from_config
 from ldm.modules.attention import LinearAttention
 
@@ -292,21 +292,47 @@ class SpatialAwareAttnBlock(nn.Module):
             mask = mask.unsqueeze(0)
             mask = torch.nn.functional.interpolate(mask, size=(h,w))
             mask = mask.squeeze(0)
-            mask = mask.view(b, h*w, 1)
-            mask = mask.repeat(1, 1, h*w)
-            w_ = torch.mul(w_,(1-mask))
+            mask_1 = mask.view(b, h*w, 1)
+            mask_2 = mask.view(b,1,h*w)
+            mask = torch.bmm(mask_1, mask_2)
+            #print(w_.shape)
+
+            # mask = mask.repeat(1, 1, h*w)
+            
+            
+
             # w_ = w_.masked_fill(mask == 0, -1e9)
         w_ = torch.nn.functional.softmax(w_, dim=2)
+        w_ = w_ * (1-mask)
+        #print(mask)
+        
+        #print(w_)
 
         # attend to values
         v = v.reshape(b,c,h*w)
         w_ = w_.permute(0,2,1)   # b,hw,hw (first hw of k, second of q)
+    
         h_ = torch.bmm(v,w_)     # b, c,hw (hw of q) h_[b,c,j] = sum_i v[b,c,i] w_[b,i,j]
         h_ = h_.reshape(b,c,h,w)
-
+        #h_ = h_ * (1-mask)
+        h_sub = w_ 
+        
+        h_sub = h_sub.sum(dim=2)
+        h_sub = h_sub.reshape(b,1,h,w)
         h_ = self.proj_out(h_)
+        h_sub = torch.clamp(h_sub, 0, 1)
+        h_sub = (h_sub-torch.min(h_sub))/(torch.max(h_sub)-torch.min(h_sub))
+        
 
-        return x+h_
+        return x+h_, h_sub
+
+
+def show_img(img):
+    img = np.asarray(img)
+    plt.figure(figsize=(10, 10))
+    plt.imshow(img)
+    plt.axis('off')
+    plt.show()
 
 class MemoryEfficientAttnBlock(nn.Module):
     def __init__(self, in_channels):
@@ -599,7 +625,7 @@ class Encoder(nn.Module):
         for i_level in range(self.num_resolutions): # num_resolution = 4
             block = nn.ModuleList()
             attn = nn.ModuleList()
-
+            
             block_in = ch*in_ch_mult[i_level]
             block_out = ch*ch_mult[i_level]
             for i_block in range(self.num_res_blocks):
@@ -618,6 +644,8 @@ class Encoder(nn.Module):
                 down.downsample = Downsample(block_in, resamp_with_conv)
                 down.dwt = DWT_transform(block_in, block_out)
                 curr_res = curr_res // 2
+            merge = torch.nn.Conv2d(2*block_in, block_in, kernel_size=3, padding=1).cuda()
+            down.merge = merge
             self.down.append(down)
             
 
@@ -654,7 +682,7 @@ class Encoder(nn.Module):
                 for i_block in range(self.num_res_blocks): # resblocks : 2
                     h = self.down[i_level].block[i_block](hs[-1], temb)
                     if len(self.down[i_level].attn) > 0:
-                        h = self.down[i_level].attn[i_block](h, mask)
+                        h, attention_map = self.down[i_level].attn[i_block](h, mask)
                         #h = self.down[i_level].attn[i_block](h)
                     hs.append(h)
                 if return_fea:
@@ -666,7 +694,7 @@ class Encoder(nn.Module):
             # middle
             h = hs[-1]
             h = self.mid.block_1(h, temb)
-            h = self.mid.attn_1(h, mask)
+            h,_ = self.mid.attn_1(h, mask)
             # h = self.mid.attn_1(h)
             h = self.mid.block_2(h, temb)
 
@@ -683,12 +711,16 @@ class Encoder(nn.Module):
         else:
             hs = [self.conv_in(x)]
             fea_list = []
+            attn_list = []
             high_freq_fea = []
             for i_level in range(self.num_resolutions): # i_level = 0,1,2,3
                 for i_block in range(self.num_res_blocks): # resblocks : 2
                     h = self.down[i_level].block[i_block](hs[-1], temb)
                     if len(self.down[i_level].attn) > 0:
-                        h = self.down[i_level].attn[i_block](h, mask)
+                        h,attention_map = self.down[i_level].attn[i_block](h, mask)
+                        attn_list.append(attention_map)
+                        print(i_level)
+                        print("yes")
                         #h = self.down[i_level].attn[i_block](h)
                     hs.append(h)
                 if return_fea:
@@ -699,7 +731,9 @@ class Encoder(nn.Module):
                     hs_down = self.down[i_level].downsample(hs[-1])
                     dwt_low, dwt_high = self.down[i_level].dwt(hs_)
                     hs[-1].squeeze(0)
-                    hs_out = hs_down + dwt_low # TODO:correct channel num
+                    #hs_out = torch.cat([hs_down, dwt_low],dim=1)
+                    hs_out = hs_down # + dwt_low
+                    #hs_out = self.down[i_level].merge(hs_out)
                     hs.append(hs_out)
                     high_freq_fea.append(dwt_high)
                     
@@ -708,7 +742,7 @@ class Encoder(nn.Module):
             # middle
             h = hs[-1]
             h = self.mid.block_1(h, temb)
-            h = self.mid.attn_1(h, mask)
+            h,attention_map = self.mid.attn_1(h, mask)
             # h = self.mid.attn_1(h)
             h = self.mid.block_2(h, temb)
 
@@ -719,8 +753,8 @@ class Encoder(nn.Module):
             h = self.conv_out(h)
 
             if return_fea:
-                return h, fea_list, high_freq_fea
-            return h, high_freq_fea
+                return h, fea_list, high_freq_fea, attn_list
+            return h, high_freq_fea, attn_list
         
 
 class Decoder(nn.Module):
@@ -885,7 +919,9 @@ class Decoder_Mix(nn.Module):
             # i_level = 3,2,1,0
             block = nn.ModuleList()
             attn = nn.ModuleList()
+            
             block_out = ch*ch_mult[i_level]
+            
 
             if i_level != self.num_resolutions-1: # i_level != 3
                 if i_level != 0:
@@ -908,6 +944,12 @@ class Decoder_Mix(nn.Module):
             if i_level != 0:
                 up.upsample = Upsample(block_in, resamp_with_conv)
                 curr_res = curr_res * 2
+            if i_level != self.num_resolutions-1 and i_level != 0:
+                merge = torch.nn.Conv2d(int(block_out*1.5), block_out, kernel_size=3, padding=1).cuda()
+            else:
+                merge = torch.nn.Conv2d(int(block_out*2), block_out,kernel_size=3, padding=1).cuda()
+            up.merge = merge
+            
             self.up.insert(0, up) # prepend to get consistent order
 
         # end
@@ -933,7 +975,7 @@ class Decoder_Mix(nn.Module):
             # middle
             h = self.mid.block_1(h, temb)
             # h = self.mid.attn_1(h)
-            h = self.mid.attn_1(h, mask)
+            h,_ = self.mid.attn_1(h, mask)
             h = self.mid.block_2(h, temb)
 
             # upsampling
@@ -941,7 +983,7 @@ class Decoder_Mix(nn.Module):
                 for i_block in range(self.num_res_blocks+1): # num_res_blocks+1= 3
                     h = self.up[i_level].block[i_block](h, temb)
                     if len(self.up[i_level].attn) > 0:
-                        h = self.up[i_level].attn[i_block](h, mask)
+                        h,_ = self.up[i_level].attn[i_block](h, mask)
                         # h = self.up[i_level].attn[i_block](h)
 
                 if i_level != self.num_resolutions-1 and i_level != 0:
@@ -970,7 +1012,7 @@ class Decoder_Mix(nn.Module):
             # middle
             h = self.mid.block_1(h, temb)
             # h = self.mid.attn_1(h)
-            h = self.mid.attn_1(h, mask)
+            h,_ = self.mid.attn_1(h, mask)
             h = self.mid.block_2(h, temb)
 
             # upsampling
@@ -978,10 +1020,13 @@ class Decoder_Mix(nn.Module):
                 for i_block in range(self.num_res_blocks+1): # num_res_blocks+1= 3
                     h = self.up[i_level].block[i_block](h, temb)
                     if len(self.up[i_level].attn) > 0:
-                        h = self.up[i_level].attn[i_block](h, mask)
-                        h = high_freq_fea[i_level-1] + h
-                        # h = self.up[i_level].attn[i_block](h)
+                        h,_ = self.up[i_level].attn[i_block](h, mask)
 
+                        # h = self.up[i_level].attn[i_block](h)
+                # if i_level != 0:
+                #     h = torch.cat([high_freq_fea[i_level-1], h], dim=1)
+                #     h = self.up[i_level].merge(h)
+                #     h = high_freq_fea[i_level-1] + h
                 if i_level != self.num_resolutions-1 and i_level != 0:
                     # i_level = 2, 1
                     #print(i_level)
@@ -997,6 +1042,7 @@ class Decoder_Mix(nn.Module):
                     #     h = self.up[i_level].upsample(h)
                     # else:
                     h = self.up[i_level].upsample(h)
+                
             # end
             if self.give_pre_end:
                 return h

@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 import cv2
 import torch.nn.functional as F
 from contextlib import contextmanager
-
+from matplotlib import pyplot as plt
 from src.taming.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
 
 from ldm.modules.diffusionmodules.model import Encoder, Decoder, Decoder_Mix
@@ -499,7 +499,7 @@ class AutoencoderKLResi(pl.LightningModule):
         self.decoder = Decoder_Mix(**ddconfig)
         self.mask_proj = torch.nn.Sequential(
             torch.nn.SiLU(),
-            conv_nd(2, 1, 1, 3, padding=1),
+            #conv_nd(2, 1, 1, 3, padding=1),
         )
         self.decoder.fusion_w = fusion_w
         self.loss = instantiate_from_config(lossconfig)
@@ -531,6 +531,10 @@ class AutoencoderKLResi(pl.LightningModule):
                 # elif 'quant_conv' in name and 'post_quant_conv' not in name:
                 #     param.requires_grad = True
                 elif 'loss.discriminator' in name:
+                    param.requires_grad = True
+                elif 'dwt' in name:
+                    param.requires_grad = True
+                elif 'mask_proj' in name:
                     param.requires_grad = True
                 else:
                     param.requires_grad = False
@@ -586,11 +590,12 @@ class AutoencoderKLResi(pl.LightningModule):
         return missing
 
     def encode(self, x, mask=None):
-        h, enc_fea, high_freq_fea = self.encoder(x, mask, return_fea=True, return_high_freq=True)
+        h, enc_fea, high_freq_fea,attention_map = self.encoder(x, mask, return_fea=True, return_high_freq=True)
+        #visualize_fea("/home/intern/ztw/Data/Feature_visualization", enc_fea[0])
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
         # posterior = h
-        return posterior, enc_fea, high_freq_fea
+        return posterior, enc_fea, high_freq_fea,attention_map
 
     def encode_gt(self, x, new_encoder):
         h = new_encoder(x)
@@ -609,12 +614,13 @@ class AutoencoderKLResi(pl.LightningModule):
         device = input.device
         dark = dark.to(device)
         dark = dark.float().unsqueeze(0)
-        # dark = self.mask_proj(dark)
-        posterior, enc_fea_lq, high_freq_fea = self.encode(input, dark)
+        dark = torch.clamp(dark,0,1)
+        dark = self.mask_proj(dark)
+        posterior, enc_fea_lq, high_freq_fea,attention_map = self.encode(input, dark)
         freq_merge = True
         dec = self.decode(latent, enc_fea_lq, high_freq_fea, freq_merge,dark)
         dark = dark.unsqueeze(0)
-        return dec, posterior, dark
+        return dec, posterior, dark, high_freq_fea, attention_map
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self):
@@ -687,7 +693,7 @@ class AutoencoderKLResi(pl.LightningModule):
 
         return input, gt, latent, sample
     
-    def get_dark_channel(self, img, sz=15):
+    def get_dark_channel(self, img, sz=20):
         
         img = tensor2img(img, True, np.float64)
         img = img[0]
@@ -871,7 +877,7 @@ class AutoencoderKLResi(pl.LightningModule):
             inputs, gts, latents, _ = self.get_input_synthesis(batch, val=False)
         else:
             inputs, gts, latents, _ = self.get_input(batch)
-        reconstructions, posterior, mask = self(inputs, latents)
+        reconstructions, posterior, mask, _, attn_list = self(inputs, latents)
 
         if optimizer_idx == 0:
             # train encoder+decoder+logvar
@@ -893,7 +899,7 @@ class AutoencoderKLResi(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         inputs, gts, latents, _ = self.get_input(batch)
 
-        reconstructions, posterior, mask = self(inputs, latents)
+        reconstructions, posterior, mask, _, attn_list = self(inputs, latents)
         aeloss, log_dict_ae = self.loss(gts, reconstructions, posterior, 0, self.global_step,
                                         last_layer=self.get_last_layer(), split="val")
 
@@ -930,7 +936,7 @@ class AutoencoderKLResi(pl.LightningModule):
         latents = latents.to(self.device)
         samples = samples.to(self.device)
         if not only_inputs:
-            xrec, posterior, mask = self(x, latents)
+            xrec, posterior, mask, high_freq_fea, attention_map = self(x, latents)
             if x.shape[1] > 3:
                 # colorize with random projection
                 assert xrec.shape[1] > 3
@@ -942,6 +948,26 @@ class AutoencoderKLResi(pl.LightningModule):
             log["reconstructions"] = xrec
         log["inputs"] = x
         log["masks"] = mask
+        
+        high_freq = high_freq_fea[0]
+        
+        reduce_channel = torch.nn.Conv2d(128, 1, kernel_size=1)
+        device = "cpu"
+        high_freq = high_freq.to(device)
+        high_freq = reduce_channel(high_freq)
+       
+        log["high_freq"] = high_freq.to("cuda")
+        device = "cpu"
+        attention = attention_map[-1].to(device)
+        # attention = attention.squeeze(0)
+        # attention = attention.permute(1,2,0)
+        # plt.figure(figsize=(10,10))
+        # plt.imshow(attention, cmap='binary', interpolation='bilinear')
+        # plt.colorbar()
+        # plt.title('Attention Map')
+        # plt.savefig('/home/intern/ztw/Data/Feature_visualization/attn.png', dpi=300)
+        # plt.close()
+        log['attention_map'] = attention
         log["gts"] = gts
         log["samples"] = samples
         return log
@@ -956,4 +982,10 @@ class AutoencoderKLResi(pl.LightningModule):
     
 
 
-
+def visualize_fea(save_path, fea_img):
+    fea_img = fea_img.cpu()
+    fig = plt.figure(figsize = (fea_img.shape[1]/10, fea_img.shape[0]/10)) # Your image (W)idth and (H)eight in inches
+    plt.subplots_adjust(left = 0, right = 1.0, top = 1.0, bottom = 0)
+    im = plt.imshow(fea_img, vmin=0.0, vmax=1.0, cmap='jet', aspect='auto') # Show the image
+    plt.savefig(save_path)
+    plt.clf()
