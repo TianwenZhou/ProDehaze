@@ -101,16 +101,18 @@ def load_model_from_config(config, ckpt, verbose=False):
 	model.eval()
 	return model
 
-def load_img(path):
+def load_img(path, input_size):
 	image = Image.open(path).convert("RGB")
+	image = image.resize((input_size, input_size))
 	w, h = image.size
 	print(f"loaded input image of size ({w}, {h}) from {path}")
-	w, h = map(lambda x: x - x % 8, (w, h))  # resize to integer multiple of 32
+	w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
 	image = image.resize((w, h), resample=PIL.Image.LANCZOS)
 	image = np.array(image).astype(np.float32) / 255.0
 	image = image[None].transpose(0, 3, 1, 2)
 	image = torch.from_numpy(image)
 	return 2.*image - 1.
+
 
 
 def main():
@@ -235,7 +237,7 @@ def main():
 
 	model.configs = config
 
-	vqgan_config = OmegaConf.load("configs/autoencoder/autoencoder_kl_64x64x4_resi.yaml")
+	vqgan_config = OmegaConf.load("/home/intern/ztw/Methods/LatentDehazing/configs/autoencoder/autoencoder_kl_64x64x4_resi_offline.yaml")
 	vq_model = load_model_from_config(vqgan_config, opt.vqgan_ckpt)
 	vq_model = vq_model.to(device)
 	vq_model.decoder.fusion_w = opt.dec_w
@@ -252,14 +254,14 @@ def main():
 		if os.path.exists(os.path.join(outpath, item)):
 			img_list.remove(item)
 			continue
-		cur_image = load_img(os.path.join(opt.init_img, item)).to(device)
+		cur_image = load_img(os.path.join(opt.init_img, item), opt.input_size).to(device)
 		# max size: 1800 x 1800 for V100
-		cur_image = F.interpolate(
-				cur_image,
-				size=(int(cur_image.size(-2)*opt.upscale),
-					  int(cur_image.size(-1)*opt.upscale)),
-				mode='bicubic',
-				)
+		# cur_image = F.interpolate(
+		# 		cur_image,
+		# 		size=(int(cur_image.size(-2)*opt.upscale),
+		# 			  int(cur_image.size(-1)*opt.upscale)),
+		# 		mode='bicubic',
+		# 		)
 		init_image_list.append(cur_image)
 
 	model.register_schedule(given_betas=None, beta_schedule="linear", timesteps=1000,
@@ -320,6 +322,7 @@ def main():
 					# x_T = noise
 
 					samples, _ = model.sample_canvas(cond=semantic_c, struct_cond=init_latent, batch_size=init_image.size(0), timesteps=opt.ddpm_steps, time_replace=opt.ddpm_steps, x_T=x_T, return_intermediates=True, tile_size=int(opt.input_size/8), tile_overlap=opt.tile_overlap, batch_size_sample=opt.n_samples)
+					
 					_, enc_fea_lq = vq_model.encode(init_template)
 					x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
 					if ori_size is not None:
@@ -338,8 +341,8 @@ def main():
 							os.path.join(outpath, basename+'.png'))
 						init_image = torch.clamp((init_image + 1.0) / 2.0, min=0.0, max=1.0)
 						init_image = 255. * rearrange(init_image[i].cpu().numpy(), 'c h w -> h w c')
-						Image.fromarray(init_image.astype(np.uint8)).save(
-							os.path.join(outpath, basename+'_lq.png'))
+						# Image.fromarray(init_image.astype(np.uint8)).save(
+						# 	os.path.join(outpath, basename+'_lq.png'))
 
 				toc = time.time()
 

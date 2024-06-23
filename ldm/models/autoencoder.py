@@ -628,7 +628,6 @@ class AutoencoderKLResi(pl.LightningModule):
         dark = dark.float().unsqueeze(0)
         dark = torch.clamp(dark,0,1)
         dark = self.mask_proj(dark)
-
         posterior, enc_fea_lq, high_freq_fea,attention_map = self.encode(input, dark)
         freq_merge = True
         dec = self.decode(latent, enc_fea_lq, high_freq_fea, freq_merge,dark)

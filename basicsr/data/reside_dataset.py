@@ -1,4 +1,5 @@
 import cv2
+import os
 import math
 import numpy as np
 import os.path as osp
@@ -6,12 +7,15 @@ import torch
 import torch.utils.data as data
 import torchvision.utils as vutils
 import random
+from PIL import Image
 from basicsr.data import degradations as degradations
 from basicsr.data.data_util import paths_from_folder
+from basicsr.utils.img_util import tensor2img
 from basicsr.data.transforms import augment
 from basicsr.utils import FileClient, get_root_logger, imfrombytes, img2tensor
 from basicsr.utils.registry import DATASET_REGISTRY
 from pathlib import Path
+from basicsr.data.FDA import trans_image_by_ref
 from torchvision.transforms.functional import (adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation,
                                                normalize)
 
@@ -38,11 +42,16 @@ class RESIDEDataset(data.Dataset):
         self.crop_size = opt['crop_size']
         self.io_backend_opt = opt['io_backend']
         self.dataroot_depth = opt['dataroot_depth']
+        self.ref_path = opt['ref_path']
+        
         if 'image_type' not in opt:
             opt['image_type'] = 'png'
         # support multiple type of data: file path and meta data, remove support of lmdb
         self.paths = []
         self.depths = []
+        self.ref_imgs = []
+        self.ref_imgs = paths_from_folder(self.ref_path)
+
         if 'meta_info' in opt:
             with open(self.opt['meta_info']) as fin:
                     paths = [line.strip().split(' ')[0] for line in fin]
@@ -104,6 +113,15 @@ class RESIDEDataset(data.Dataset):
                 break
             finally:
                 retry -= 1
+        
+        color_strategy = np.random.rand()
+        if color_strategy <= 0.5: # 50%
+            strategy = 'add_haze'
+    #     elif 0.3 < color_strategy <= 0.6:
+    #         strategy = 'luminance'
+        else:
+            strategy = 'colour_cast'
+
         img_gt = imfrombytes(img_bytes, float32=True)
         depth = imfrombytes(depth_bytes, float32=True)
 
@@ -119,40 +137,38 @@ class RESIDEDataset(data.Dataset):
         # td_bk = np.expand_dims(td_bk, axis=-1).repeat(3, axis=-1)
         img_bk = np.array(img_f) * td_bk + A * (1 - td_bk) # I_aug
 
-        img_bk = img_bk / np.max(img_bk)
-        # img_bk = img_bk[:, :, ::-1]
-
-    
-
-
+        img_bk = img_bk / np.max(img_bk) * 255
         
+        
+        img_bk = img_bk[:, :, ::-1]
 
-        # crop or pad to 400
-        # TODO: 400 is hard-coded. You may change it accordingly
+        if strategy == 'colour_cast':
+                  # .covert('RGB')
+            img_bk = Image.fromarray(np.uint8(img_bk))
+            ref_num = random.randint(0, len(self.ref_imgs)-1)
+            
+            img_bk = trans_image_by_ref(
+                    in_path=img_bk,
+                    ref_path=self.ref_imgs[ref_num],
+                    value=np.random.rand() * 0.002 + 0.0001
+                )
+
+        else:
+            img_bk = img_bk / 255 # .covert('RGB')
+  
+
         h, w, c = img_gt.shape[0:3]
         
         crop_pad_size = self.crop_size
         # pad
-        if h < crop_pad_size or w < crop_pad_size:
-            pad_h = max(0, crop_pad_size - h)
-            pad_w = max(0, crop_pad_size - w)
-            img_gt = cv2.copyMakeBorder(img_gt, 0, pad_h, 0, pad_w, cv2.BORDER_REFLECT_101)
-            img_bk = cv2.copyMakeBorder(img_bk, 0, pad_h, 0, pad_w, cv2.BORDER_REFLECT_101)
-        # crop
-        if img_gt.shape[0] > crop_pad_size or img_gt.shape[1] > crop_pad_size:
-            h, w, c = img_gt.shape[0:3]
-            # randomly choose top and left coordinates
-            top = random.randint(0, h - crop_pad_size)
-            left = random.randint(0, w - crop_pad_size)
-            # top = (h - crop_pad_size) // 2 -1
-            # left = (w - crop_pad_size) // 2 -1
-            img_gt = img_gt[top:top + crop_pad_size, left:left + crop_pad_size, ...]
-            img_bk = img_bk[top:top + crop_pad_size, left:left + crop_pad_size, ...]
-
+        if h != crop_pad_size or w != crop_pad_size:
+            img_gt = cv2.resize(img_gt, (crop_pad_size,crop_pad_size))
+            img_bk = cv2.resize(img_bk, (crop_pad_size,crop_pad_size))
+           
         img_gt, img_bk = augment([img_gt,img_bk], self.opt['use_hflip'], self.opt['use_rot'])
         # BGR to RGB, HWC to CHW, numpy to tensor
         img_gt = img2tensor([img_gt], bgr2rgb=True, float32=True)[0]
-        img_bk = img2tensor([img_bk], bgr2rgb=True, float32=True)[0]
+        img_bk = img2tensor([img_bk], bgr2rgb=False, float32=True)[0]
         depth = img2tensor([depth], bgr2rgb=True, float32=True)[0]
 
 
@@ -167,18 +183,21 @@ if __name__ == "__main__":
     opt["scale"] = 1
     opt["phase"] = "train"
     opt["queue_size"] = 180
-    opt["gt_path"] = '/data/RESIDE_new/HR'
-    opt["dataroot_depth"] = '/data/RESIDE_new/HR_depth'
-    opt["crop_size"] = 400
+    opt["gt_path"] = '/home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR'
+    opt["dataroot_depth"] = '/home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR_depth'
+    opt["ref_path"] = "/home/intern/ztw/ztw/ztw/Data/RESIDE_ours/HR_hazy_src"
+    opt["crop_size"] = 512
     opt["io_backend"] =  {"type": "disk"}
     opt['use_hflip'] = True
     opt['use_rot'] = True
+
     print(opt)
     reside_set = RESIDEDataset(opt)
     print(reside_set)
+
     for image in reside_set:
         
-        vutils.save_image(image['gt'],'/home/intern/ztw/ztw/Methods/LatentDehazing/test_data/gt/test_1.png')
-        vutils.save_image(image['hazy'],'/home/intern/ztw/ztw/Methods/LatentDehazing/test_data/hazy/test_1_hazy.png')
-        vutils.save_image(image['depth'],'/home/intern/ztw/ztw/Methods/LatentDehazing/test_data/hazy/test_1_depth.png')
+        vutils.save_image(image['gt'],'/home/intern/ztw/ztw/ztw/Methods/LatentDehazing/test_data/gt/test_1_gt.png')
+        vutils.save_image(image['hazy'],'/home/intern/ztw/ztw/ztw/Methods/LatentDehazing/test_data/hazy/test_1_hazy.png')
+
 

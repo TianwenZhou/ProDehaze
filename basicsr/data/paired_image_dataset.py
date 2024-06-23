@@ -84,13 +84,12 @@ class PairedImageDataset(data.Dataset):
             img_gt = cv2.copyMakeBorder(img_gt, 0, pad_h, 0, pad_w, cv2.BORDER_REFLECT_101)
             img_lq = cv2.copyMakeBorder(img_lq, 0, pad_h, 0, pad_w, cv2.BORDER_REFLECT_101)
 
-        # augmentation for training
-        if self.opt['phase'] == 'train':
-            gt_size = self.opt['gt_size']
-            # random crop
-            img_gt, img_lq = paired_random_crop(img_gt, img_lq, gt_size, scale, gt_path)
-            # flip, rotation
-            img_gt, img_lq = augment([img_gt, img_lq], self.opt['use_hflip'], self.opt['use_rot'])
+
+        gt_size = self.opt['gt_size']
+        # resize
+        img_gt = cv2.resize(img_gt,(gt_size,gt_size))
+        img_lq = cv2.resize(img_lq,(gt_size,gt_size))
+           
 
         # color space transform
         if 'color' in self.opt and self.opt['color'] == 'y':

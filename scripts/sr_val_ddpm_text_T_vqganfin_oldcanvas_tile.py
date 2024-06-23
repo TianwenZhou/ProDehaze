@@ -16,7 +16,7 @@ from contextlib import nullcontext
 import time
 from pytorch_lightning import seed_everything
 
-from ldm.util import instantiate_from_config
+from ldm.util import instantiate_from_config, merge
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
 import math
@@ -114,8 +114,10 @@ def load_img(path):
 	image = torch.from_numpy(image)
 	return 2.*image - 1.
 
-def read_image(im_path):
-	im = np.array(Image.open(im_path).convert("RGB"))
+def read_image(im_path, input_size):
+	im = Image.open(im_path).convert("RGB")
+	im = im.resize((input_size, input_size))
+	im = np.array(im)
 	im = im.astype(np.float32)/255.0
 	im = im[None].transpose(0,3,1,2)
 	im = (torch.from_numpy(im) - 0.5) / 0.5
@@ -166,7 +168,7 @@ def main():
 	parser.add_argument(
 		"--n_samples",
 		type=int,
-		default=2,
+		default=1,
 		help="how many samples to produce for each given prompt. A.k.a batch size",
 	)
 	parser.add_argument(
@@ -209,7 +211,7 @@ def main():
 	parser.add_argument(
 		"--tile_overlap",
 		type=int,
-		default=32,
+		default=0,
 		help="tile overlap size (in latent)",
 	)
 	parser.add_argument(
@@ -227,13 +229,13 @@ def main():
 	parser.add_argument(
 		"--vqgantile_stride",
 		type=int,
-		default=1000,
+		default=500,
 		help="the stride for tile operation before VQGAN decoder (in pixel)",
 	)
 	parser.add_argument(
 		"--vqgantile_size",
 		type=int,
-		default=1280,
+		default=2000,
 		help="the size for tile operation before VQGAN decoder (in pixel)",
 	)
 	parser.add_argument(
@@ -261,8 +263,12 @@ def main():
 	model = model.to(device)
 
 	model.configs = config
+	transform = torchvision.transforms.Compose([
+		
+		torchvision.transforms.CenterCrop(opt.input_size),
+	])
 
-	vqgan_config = OmegaConf.load("configs/autoencoder/autoencoder_kl_64x64x4_resi.yaml")
+	vqgan_config = OmegaConf.load("/home/intern/ztw/Methods/LatentDehazing/configs/autoencoder/autoencoder_kl_64x64x4_resi_offline.yaml")
 	vq_model = load_model_from_config(vqgan_config, opt.vqgan_ckpt)
 	vq_model = vq_model.to(device)
 	vq_model.decoder.fusion_w = opt.dec_w
@@ -312,28 +318,29 @@ def main():
 				all_samples = list()
 				for n in trange(len(images_path), desc="Sampling"):
 					if (n + 1) % opt.n_samples == 1 or opt.n_samples == 1:
-						cur_image = read_image(images_path[n])
+						cur_image = read_image(images_path[n], opt.input_size)
+						# cur_image = transform(cur_image)
 						size_min = min(cur_image.size(-1), cur_image.size(-2))
-						upsample_scale = max(opt.input_size/size_min, opt.upscale)
-						cur_image = F.interpolate(
-									cur_image,
-									size=(int(cur_image.size(-2)*upsample_scale),
-										  int(cur_image.size(-1)*upsample_scale)),
-									mode='bicubic',
-									)
+						# upsample_scale = max(opt.input_size/size_min, opt.upscale)
+						# cur_image = F.interpolate(
+						# 			cur_image,
+						# 			size=(int(cur_image.size(-2)*upsample_scale),
+						# 				  int(cur_image.size(-1)*upsample_scale)),
+						# 			mode='bicubic',
+						# 			)
 						cur_image = cur_image.clamp(-1, 1)
 						im_lq_bs = [cur_image, ]  # 1 x c x h x w, [-1, 1]
 						im_path_bs = [images_path[n], ]
 					else:
-						cur_image = read_image(images_path[n])
-						size_min = min(cur_image.size(-1), cur_image.size(-2))
-						upsample_scale = max(opt.input_size/size_min, opt.upscale)
-						cur_image = F.interpolate(
-									cur_image,
-									size=(int(cur_image.size(-2)*upsample_scale),
-										  int(cur_image.size(-1)*upsample_scale)),
-									mode='bicubic',
-									)
+						cur_image = read_image(images_path[n], opt.input_size)
+						# cur_image = transform(cur_image)
+						# upsample_scale = max(opt.input_size/size_min, opt.upscale)
+						# cur_image = F.interpolate(
+						# 			cur_image,
+						# 			size=(int(cur_image.size(-2)*upsample_scale),
+						# 				  int(cur_image.size(-1)*upsample_scale)),
+						# 			mode='bicubic',
+						# 			)
 						cur_image = cur_image.clamp(-1, 1)
 						im_lq_bs.append(cur_image) # 1 x c x h x w, [-1, 1]
 						im_path_bs.append(images_path[n]) # 1 x c x h x w, [-1, 1]
@@ -361,11 +368,13 @@ def main():
 								# If you would like to start from the intermediate steps, you can add noise to LR to the specific steps.
 								t = repeat(torch.tensor([999]), '1 -> b', b=im_lq_bs.size(0))
 								t = t.to(device).long()
-								x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
-								# x_T = noise
+								# x_T = model.q_sample_respace(x_start=init_latent, t=t, sqrt_alphas_cumprod=sqrt_alphas_cumprod, sqrt_one_minus_alphas_cumprod=sqrt_one_minus_alphas_cumprod, noise=noise)
+								x_T = noise
+								
 								samples, _ = model.sample_canvas(cond=semantic_c, struct_cond=init_latent, batch_size=im_lq_pch.size(0), timesteps=opt.ddpm_steps, time_replace=opt.ddpm_steps, x_T=x_T, return_intermediates=True, tile_size=int(opt.input_size/8), tile_overlap=opt.tile_overlap, batch_size_sample=opt.n_samples)
 								_, enc_fea_lq = vq_model.encode(im_lq_pch)
 								x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
+								x_samples = model.decode_first_stage(samples)
 								if opt.colorfix_type == 'adain':
 									x_samples = adaptive_instance_normalization(x_samples, im_lq_pch)
 								elif opt.colorfix_type == 'wavelet':
@@ -374,6 +383,7 @@ def main():
 							im_sr = im_spliter.gather()
 							im_sr = torch.clamp((im_sr+1.0)/2.0, min=0.0, max=1.0)
 						else:
+							
 							init_latent = model.get_first_stage_encoding(model.encode_first_stage(im_lq_bs))  # move to latent space
 							text_init = ['']*opt.n_samples
 							semantic_c = model.cond_stage_model(text_init)
@@ -385,21 +395,27 @@ def main():
 							# x_T = noise
 							samples, _ = model.sample_canvas(cond=semantic_c, struct_cond=init_latent, batch_size=im_lq_bs.size(0), timesteps=opt.ddpm_steps, time_replace=opt.ddpm_steps, x_T=x_T, return_intermediates=True, tile_size=int(opt.input_size/8), tile_overlap=opt.tile_overlap, batch_size_sample=opt.n_samples)
 							_, enc_fea_lq = vq_model.encode(im_lq_bs)
-							x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq)
+							x_samples = vq_model.decode(samples, enc_fea_lq)
+							# x_samples = model.decode_first_stage(samples)
+							# encoded_lq = model.encode_first_stage(cur_image)
+							# z_lq = model.get_first_stage_encoding(encoded_lq)
+							# recon_lq = model.decode_first_stage(z_lq)
+							# x_samples = merge(recon_lq, x_samples, cur_image)
 							if opt.colorfix_type == 'adain':
 								x_samples = adaptive_instance_normalization(x_samples, im_lq_bs)
 							elif opt.colorfix_type == 'wavelet':
 								x_samples = wavelet_reconstruction(x_samples, im_lq_bs)
 							im_sr = torch.clamp((x_samples+1.0)/2.0, min=0.0, max=1.0)
+							
 
-						if upsample_scale > opt.upscale:
-							im_sr = F.interpolate(
-										im_sr,
-										size=(int(im_lq_bs.size(-2)*opt.upscale/upsample_scale),
-											  int(im_lq_bs.size(-1)*opt.upscale/upsample_scale)),
-										mode='bicubic',
-										)
-							im_sr = torch.clamp(im_sr, min=0.0, max=1.0)
+						# if upsample_scale > opt.upscale:
+						# 	im_sr = F.interpolate(S
+						# 				im_sr,
+						# 				size=(int(im_lq_bs.size(-2)*opt.upscale/upsample_scale),
+						# 					  int(im_lq_bs.size(-1)*opt.upscale/upsample_scale)),
+						# 				mode='bicubic',
+						# 				)
+						# 	im_sr = torch.clamp(im_sr, min=0.0, max=1.0)
 
 						im_sr = im_sr.cpu().numpy().transpose(0,2,3,1)*255   # b x h x w x c
 

@@ -19,7 +19,7 @@ model:
     scale_factor: 0.18215
     use_ema: False
     # for training only
-    ckpt_path:  /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000067.ckpt
+    ckpt_path:  /home/intern/ztw/Methods/LatentDehazing/src/stable_diffusion-v2-1_512/v2-1_512-ema-pruned.ckpt
     unfrozen_diff: False
     random_size: False
     time_replace: 1000
@@ -52,7 +52,7 @@ model:
       target: ldm.models.autoencoder.AutoencoderKL
       params:
         # for training only
-        ckpt_path: /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000067.ckpt
+        ckpt_path: /home/intern/ztw/Methods/LatentDehazing/src/stable_diffusion-v2-1_512/v2-1_512-ema-pruned.ckpt
         embed_dim: 4
         monitor: val/rec_loss
         ddconfig:
@@ -109,26 +109,28 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 1
+    batch_size: 2
     num_workers: 6
     wrap: false
     train:
-      target: basicsr.data.reside_dataset.RESIDEDataset
+      target: basicsr.data.crop_dataset.PairedImageDataset
       params:
-        phase : train
-        gt_path: '/home/intern/ztw/Data/RESIDE_new/HR'
-        dataroot_depth: '/home/intern/ztw/Data/RESIDE_new/HR_depth'
-        ref_path: '/home/intern/ztw/Data/RESIDE_ours/HR_hazy_src'
-        crop_size: 512
+        dataroot_gt: '/home/intern/ztw/Data/NhHaze_additional_test/train/HR'
+        dataroot_lq: '/home/intern/ztw/Data/NhHaze_additional_test/train/HR_hazy'
+        
+        scale : 1
+        phase : val
         io_backend:
           type: disk
+        
+        gt_size: 512
         use_hflip: True
-        use_rot: True
+        use_rot: False
     validation:
-      target: basicsr.data.paired_image_dataset.PairedImageDataset
+      target: basicsr.data.crop_dataset.PairedImageDataset
       params:
-        dataroot_gt: '/home/intern/ztw/Data/I-HAZE-PROCESS/HR'
-        dataroot_lq: '/home/intern/ztw/Data/I-HAZE-PROCESS/HR_hazy'
+        dataroot_gt: '/home/intern/ztw/Data/NhHaze_additional_test/test/HR'
+        dataroot_lq: '/home/intern/ztw/Data/NhHaze_additional_test/test/HR_hazy'
         
         scale : 1
         phase : val
@@ -160,7 +162,7 @@ data:
 test_data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 1
+    batch_size: 6
     num_workers: 6
     wrap: false
     test:
@@ -205,11 +207,11 @@ lightning:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 1000
+        batch_frequency: 200
         max_images: 1
         increase_log_steps: False
 
   trainer:
     benchmark: True
     max_steps: 800000
-    accumulate_grad_batches: 8
+    accumulate_grad_batches: 24

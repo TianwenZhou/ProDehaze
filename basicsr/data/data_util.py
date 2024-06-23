@@ -6,6 +6,18 @@ from torch.nn import functional as F
 
 from basicsr.data.transforms import mod_crop
 from basicsr.utils import img2tensor, scandir
+import os
+import torch
+import torchvision
+import random
+import numpy as np
+
+IMG_EXTENSIONS = ['.jpg', '.JPG', '.jpeg', '.JPEG',
+                  '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP', '.tif']
+
+
+def is_image_file(filename):
+    return any(filename.endswith(extension) for extension in IMG_EXTENSIONS)
 
 
 def read_img_seq(path, require_mod_crop=False, scale=1, return_imgname=False):
@@ -38,7 +50,17 @@ def read_img_seq(path, require_mod_crop=False, scale=1, return_imgname=False):
         return imgs, imgnames
     else:
         return imgs
-
+    
+def get_paths_from_images(path):
+    assert os.path.isdir(path), '{:s} is not a valid directory'.format(path)
+    images = []
+    for dirpath, _, fnames in sorted(os.walk(path)):
+        for fname in sorted(fnames):
+            if is_image_file(fname):
+                img_path = os.path.join(dirpath, fname)
+                images.append(img_path)
+    assert images, '{:s} has no valid image file'.format(path)
+    return sorted(images)
 
 def generate_frame_indices(crt_idx, max_frame_num, num_frames, padding='reflection'):
     """Generate an index list for reading `num_frames` frames from a sequence
