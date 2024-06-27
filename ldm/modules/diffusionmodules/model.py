@@ -745,7 +745,7 @@ class Encoder(nn.Module):
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
                                        dropout=dropout)
-
+        self.mid.attn_2 = make_attn(block_in, attn_type="vanilla")
         # end
         self.norm_out = Normalize(block_in)
         self.conv_out = torch.nn.Conv2d(block_in,
@@ -770,7 +770,7 @@ class Encoder(nn.Module):
                 for i_block in range(self.num_res_blocks): # resblocks : 2
                     h = self.down[i_level].block[i_block](hs[-1], temb)
                     if len(self.down[i_level].attn) > 0:
-                        h, attention_map = self.down[i_level].attn[i_block](h, mask=None)
+                        h, attention_map = self.down[i_level].attn[i_block](h)
                         #h = self.down[i_level].attn[i_block](h)
                     hs.append(h)
                 if return_fea:
@@ -783,7 +783,7 @@ class Encoder(nn.Module):
             h = hs[-1]
             
             h = self.mid.block_1(h, temb)
-            h = self.mid.attn_1(h, mask=None)
+            h = self.mid.attn_2(h)
             # h = self.mid.attn_1(h)
             
             h = self.mid.block_2(h, temb)
@@ -810,9 +810,29 @@ class Encoder(nn.Module):
                     h = self.down[i_level].block[i_block](hs[-1], temb)
                     if len(self.down[i_level].attn) > 0:
                         h_size = (h.shape[2], h.shape[3])
+                        
+                        mask = mask.float()
+                        mask = mask.unsqueeze(0)
+                        
+                        mask = torch.nn.functional.interpolate(mask, size=(h.shape[2], h.shape[3]))
+                        mask = torch.clamp(mask, min=0, max=1)
+                        # print("mask")
+                        # print(mask)
+                        _,C,_,_ = h.shape
+                        mask_ = mask.repeat(1, C, 1, 1)
+
+                        # h = torch.cat([(1-mask_),h], dim=1)
+                        # h = torch.cat([mask_,h], dim=1)
+                        mask = mask.squeeze(0)
                         h = self.down[i_level].patch_embed[i_block](h)
-                        h = self.down[i_level].attn[i_block](h, h_size, mask)
+                        
+                        reverse_mask = 1 - mask
+
+                        h = self.down[i_level].attn[i_block](h, h_size, reverse_mask)
                         h = self.down[i_level].patch_unembed[i_block](h, h_size)
+                        
+                        #h = h[:,0:C,:,:]
+                        #print(h.shape)
                         dwt_low, dwt_high = self.down[i_level].dwt(h)
                         high_freq_fea.append(dwt_low)
                         #h = self.down[i_level].attn[i_block](h)
@@ -837,10 +857,20 @@ class Encoder(nn.Module):
             h = hs[-1]
             h = self.mid.block_1(h, temb)
             h_size = (h.shape[2], h.shape[3])
+            _,C,_,_ = h.shape
+            mask = mask.float()
+            mask = mask.unsqueeze(0)
+            mask = torch.nn.functional.interpolate(mask, size=(h.shape[2], h.shape[3]))
+            mask_ = mask.repeat(1, C, 1, 1)
+            # h = torch.cat([(1-mask_), h], dim=1)
+            # h = torch.cat([mask_,h], dim=1)
             h = self.mid.patch_embed(h)
-            h = self.mid.attn_1(h, h_size, mask)
+            mask = mask.squeeze(0)
+            reverse_mask = 1 - mask
+
+            h = self.mid.attn_1(h, h_size, reverse_mask)
             h = self.mid.patch_unembed(h, h_size)
-            
+           # h = h[:,0:C,:,:]
             # h = self.mid.attn_1(h)
             h = self.mid.block_2(h, temb)
 
@@ -1019,6 +1049,7 @@ class Decoder_Mix(nn.Module):
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
                                        dropout=dropout)
+        self.mid.attn_2 = make_attn(block_in,attn_type="vanilla")
 
         # upsampling
         self.up = nn.ModuleList()
@@ -1093,7 +1124,7 @@ class Decoder_Mix(nn.Module):
             # middle
             h = self.mid.block_1(h, temb)
             # h = self.mid.attn_1(h)
-            h,_ = self.mid.attn_1(h, mask)
+            h,_ = self.mid.attn_2(h)
             h = self.mid.block_2(h, temb)
 
             # upsampling
@@ -1101,7 +1132,7 @@ class Decoder_Mix(nn.Module):
                 for i_block in range(self.num_res_blocks+1): # num_res_blocks+1= 3
                     h = self.up[i_level].block[i_block](h, temb)
                     if len(self.up[i_level].attn) > 0:
-                        h,_ = self.up[i_level].attn[i_block](h, mask)
+                        h,_ = self.up[i_level].attn[i_block](h)
                         # h = self.up[i_level].attn[i_block](h)
 
                 if i_level != self.num_resolutions-1 and i_level != 0:
@@ -1130,8 +1161,23 @@ class Decoder_Mix(nn.Module):
             # middle
             h = self.mid.block_1(h, temb)
             h_size = (h.shape[2], h.shape[3])
+            _,C,_,_ = h.shape
+            
+            
+            mask = mask.float()
+            mask = mask.unsqueeze(0)
+            # print('decoder')
+            # print(mask.shape)
+            mask = torch.nn.functional.interpolate(mask, size=(h.shape[2], h.shape[3]))
+
+            mask_ = mask.repeat(1, C, 1, 1)
+            # h = torch.cat([(1-mask_), h], dim=1)
+            # h = torch.cat([mask_, h], dim=1)
             h = self.mid.patch_embed(h)
-            h = self.mid.attn_1(h, h_size, mask)
+            mask = mask.squeeze(0)
+            reverse_mask = 1 - mask
+
+            h = self.mid.attn_1(h, h_size, reverse_mask)
             h = self.mid.patch_unembed(h, h_size)
             
             h = self.mid.block_2(h, temb)
@@ -1142,9 +1188,21 @@ class Decoder_Mix(nn.Module):
                     h = self.up[i_level].block[i_block](h, temb)
                     if len(self.up[i_level].attn) > 0:
                         h_size = (h.shape[2], h.shape[3])
+                        _,C,_,_ = h.shape
+                        mask = mask.float()
+                        mask = mask.unsqueeze(0)
+                        mask = torch.nn.functional.interpolate(mask, size=(h.shape[2], h.shape[3]))
+                        mask_ = mask.repeat(1, C, 1, 1)
+                        # h = torch.cat([(1-mask_), h], dim=1)
+                        # h = torch.cat([mask_,h], dim=1)
                         h = self.up[i_level].patch_embed[i_block](h)
-                        h = self.up[i_level].attn[i_block](h, h_size, mask)
+                        
+                        mask = mask.squeeze(0)
+                        reverse_mask = 1 - mask
+
+                        h = self.up[i_level].attn[i_block](h, h_size, reverse_mask)
                         h = self.up[i_level].patch_unembed[i_block](h, h_size)
+                        #h = h[:, 0:C, :,:]
                         # h = self.up[i_level].attn[i_block](h)
                 # if i_level != 0:
                 #     h = torch.cat([high_freq_fea[i_level-1], h], dim=1)

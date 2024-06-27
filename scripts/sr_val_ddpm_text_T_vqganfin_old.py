@@ -214,7 +214,7 @@ def main():
 		print('No color correction')
 	print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
 
-	vqgan_config = OmegaConf.load("/home/intern/ztw/Methods/LatentDehazing/configs/autoencoder/autoencoder_kl_64x64x4_resi_crop.yaml")
+	vqgan_config = OmegaConf.load("configs/autoencoder/autoencoder_kl_64x64x4_resi_offline.yaml")
 	vq_model = load_model_from_config(vqgan_config, opt.vqgan_ckpt)
 	vq_model = vq_model.to(device)
 	vq_model.decoder.fusion_w = opt.dec_w
@@ -323,8 +323,9 @@ def main():
 
 					
 					samples, _ = model.sample(cond=semantic_c, struct_cond=init_latent, batch_size=init_image.size(0), timesteps=opt.ddpm_steps, time_replace=opt.ddpm_steps, x_T=x_T, return_intermediates=True)
-					_, enc_fea_lq, high_freq_fea = vq_model.encode(init_image)					
-					x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq, high_freq_fea)
+					_, enc_fea_lq, high_freq_fea,_,dark = vq_model.encode(init_image)					
+					freq_merge = True
+					x_samples = vq_model.decode(samples * 1. / model.scale_factor, enc_fea_lq, high_freq_fea, freq_merge, dark)
 					# x_samples = model.decode_first_stage(samples)
 
 					

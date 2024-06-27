@@ -19,7 +19,7 @@ model:
     scale_factor: 0.18215
     use_ema: False
     # for training only
-    ckpt_path:  /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000067.ckpt
+    # ckpt_path:  /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000067.ckpt
     unfrozen_diff: False
     random_size: False
     time_replace: 1000
@@ -52,7 +52,7 @@ model:
       target: ldm.models.autoencoder.AutoencoderKL
       params:
         # for training only
-        ckpt_path: /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000067.ckpt
+        # ckpt_path: /home/intern/ztw/Methods/LatentDehazing/logs/2024-03-25T16-04-40_v2-finetune_text_T_512/checkpoints/epoch=000067.ckpt
         embed_dim: 4
         monitor: val/rec_loss
         ddconfig:

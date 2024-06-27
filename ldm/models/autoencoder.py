@@ -539,14 +539,14 @@ class AutoencoderKLResi(pl.LightningModule):
                     param.requires_grad = True
                 elif 'mask_proj' in name:
                     param.requires_grad = True
-                elif 'attn1' in name:
-                    param.requires_grad = True
-                elif 'attn2' in name:
-                    param.requires_grad = True
-                elif 'attn3' in name:
-                    param.requires_grad = True
-                elif 'attn4' in name:
-                    param.requires_grad = True                
+                # elif 'attn1' in name:
+                #     param.requires_grad = True
+                # elif 'attn2' in name:
+                #     param.requires_grad = True
+                # elif 'attn3' in name:
+                #     param.requires_grad = True
+                # elif 'attn4' in name:
+                #     param.requires_grad = True                
 
                 else:
                     param.requires_grad = False
@@ -602,12 +602,19 @@ class AutoencoderKLResi(pl.LightningModule):
         return missing
 
     def encode(self, x, mask=None):
-
-        h, enc_fea, high_freq_fea,attention_map = self.encoder(x, mask, return_fea=True, return_high_freq=True)
+        
+        dark = self.get_dark_channel(x)
+        device = x.device
+        dark = dark.to(device)
+        dark = dark.float().unsqueeze(0)
+        dark = torch.clamp(dark,0,1)
+        # print(dark.shape)
+        dark = self.mask_proj(dark)
+        h, enc_fea, high_freq_fea,attention_map = self.encoder(x, dark, return_fea=True, return_high_freq=True)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
         posterior = h
-        return posterior, enc_fea, high_freq_fea,attention_map
+        return posterior, enc_fea, high_freq_fea,attention_map,dark
 
     def encode_gt(self, x, new_encoder):
         h = new_encoder(x)
@@ -627,8 +634,9 @@ class AutoencoderKLResi(pl.LightningModule):
         dark = dark.to(device)
         dark = dark.float().unsqueeze(0)
         dark = torch.clamp(dark,0,1)
+        # print(dark.shape)
         dark = self.mask_proj(dark)
-        posterior, enc_fea_lq, high_freq_fea,attention_map = self.encode(input, dark)
+        posterior, enc_fea_lq, high_freq_fea,attention_map,_ = self.encode(input, dark)
         freq_merge = True
         dec = self.decode(latent, enc_fea_lq, high_freq_fea, freq_merge,dark)
         dark = dark.unsqueeze(0)

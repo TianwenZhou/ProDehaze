@@ -29,7 +29,6 @@ class Mlp(nn.Module):
         x = self.drop(x)
         return x
 
-
 def window_partition(x, window_size):
     """
     Args:
@@ -98,10 +97,11 @@ class SpatialAwareWindowAttention(nn.Module):
         relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
         relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         self.register_buffer("relative_position_index", relative_position_index)
-
+        self.qkv_mask = nn.Linear(dim, dim*3, bias=qkv_bias)
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
+        
 
         self.proj_drop = nn.Dropout(proj_drop)
 
@@ -115,17 +115,42 @@ class SpatialAwareWindowAttention(nn.Module):
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
         B_, N, C = x.shape
+        # print("dcp")
+        # print(dcp_mask.shape)
+        # print("xshape")
         # print(x.shape)
+        if dcp_mask is not None:
+            mask_qkv = self.qkv_mask(dcp_mask).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+            q_mask, k_mask, v_mask = mask_qkv[0], mask_qkv[1], mask_qkv[2]
+            q_mask = q_mask * self.scale
+            dcp_mask_attn = (q_mask @ k_mask.transpose(-2, -1))
+            relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+            self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
+            relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+            dcp_mask_attn = dcp_mask_attn + relative_position_bias.unsqueeze(0)
+  
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))
+        # print(attn)
 
         relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
             self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
         relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
         attn = attn + relative_position_bias.unsqueeze(0)
+        if dcp_mask is not None:
+
+            mask1 = torch.zeros(dcp_mask_attn.shape[0], dcp_mask_attn.shape[2], dcp_mask_attn.shape[3], device=attn.device, requires_grad=False)
+            mask1 = mask1.unsqueeze(1)
+            # print(mask1.shape)
+            index = torch.topk(dcp_mask_attn, k=int(attn.shape[2]*0.6), dim=-1, largest=True)[1]
+            
+
+            mask1.scatter_(-1, index, 1.)
+            attn = torch.where(mask1 > 0, attn, torch.full_like(attn, float("-inf")))
+        
 
         if mask is not None:
             nW = mask.shape[0]
@@ -134,9 +159,9 @@ class SpatialAwareWindowAttention(nn.Module):
             attn = self.softmax(attn)
         else:
             attn = self.softmax(attn)
-
+        
         attn = self.attn_drop(attn)
-
+        
         x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -244,22 +269,38 @@ class SwinTransformerBlock(nn.Module):
         shortcut = x.reshape(B, H * W, C)
         x = self.norm1(x)
         x = x.view(B, H, W, C)
-
+        if dcp_mask is not None:
+            dcp_mask = dcp_mask.float()
+            dcp_mask_ = dcp_mask.unsqueeze(0)
+            dcp_mask_ = F.interpolate(dcp_mask_, size=(H,W))
+            
         # cyclic shift
         if self.shift_size > 0:
             shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            
+            if dcp_mask is not None:
+                shifted_dcp_mask = torch.roll(dcp_mask_, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
         else:
             shifted_x = x
+            if dcp_mask is not None:
+                shifted_dcp_mask = dcp_mask_
 
+        shifted_dcp_mask = shifted_dcp_mask.permute(0,2,3,1)
+        shifted_dcp_mask = shifted_dcp_mask.repeat(1,1,1,shifted_x.shape[3])
         # partition windows
         x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
+        if dcp_mask is not None:
 
+            dcp_windows = window_partition(shifted_dcp_mask, self.window_size)
+            dcp_windows = dcp_windows.view(-1, self.window_size * self.window_size, C)
+        else:
+            dcp_mask = None
         # W-MSA/SW-MSA (to be compatible for testing on images whose shapes are the multiple of window size
         if self.input_resolution == x_size:
-            attn_windows = self.attn(x_windows, dcp_mask, mask=self.attn_mask)  # nW*B, window_size*window_size, C
+            attn_windows = self.attn(x_windows, dcp_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
         else:
-            attn_windows = self.attn(x_windows, dcp_mask, mask=self.calculate_mask(x_size).to(x.device))
+            attn_windows = self.attn(x_windows, dcp_windows, mask=self.calculate_mask(x_size).to(x.device))
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)

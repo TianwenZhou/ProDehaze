@@ -39,7 +39,7 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 2
+    batch_size: 1
     num_workers: 6
     wrap: True
     train:
@@ -58,16 +58,16 @@ data:
 lightning:
   modelcheckpoint:
     params:
-      every_n_train_steps: 50
+      every_n_train_steps: 20
   callbacks:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 50
+        batch_frequency: 10
         max_images: 4
         increase_log_steps: False
 
   trainer:
     benchmark: True
     max_steps: 800000
-    accumulate_grad_batches: 48
+    accumulate_grad_batches: 96
