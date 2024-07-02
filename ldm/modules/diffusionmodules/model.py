@@ -466,7 +466,7 @@ def make_attn(in_channels, attn_type="vanilla"):
         return nn.Identity(in_channels)
     elif attn_type == "spatial":
         print("using_spatial_aware_attn")
-        return SpatialAwareWindowAttention(dim=in_channels, window_size=8, num_heads=1)
+        return SpatialAwareWindowAttention(dim=in_channels, window_size=16, num_heads=1)
     else:
         return LinAttnBlock(in_channels)
 
@@ -702,13 +702,13 @@ class Encoder(nn.Module):
                     attn.append(SwinTransformerBlock(dim=block_in, 
                                                      input_resolution=curr_res, 
                                                      num_heads=1,
-                                                     window_size=8))
-                    patch_embed.append(PatchEmbed(
-            img_size=512, patch_size=64, in_chans=block_in, embed_dim=block_in,
-            norm_layer=nn.LayerNorm))
-                    patch_unembed.append(PatchUnEmbed(
-            img_size=512, patch_size=64, in_chans=block_in, embed_dim=block_in,
-            norm_layer=nn.LayerNorm))
+                                                     window_size=16))
+            #         patch_embed.append(PatchEmbed(
+            # img_size=512, patch_size=64, in_chans=block_in, embed_dim=block_in,
+            # norm_layer=nn.LayerNorm))
+            #         patch_unembed.append(PatchUnEmbed(
+            # img_size=512, patch_size=64, in_chans=block_in, embed_dim=block_in,
+            # norm_layer=nn.LayerNorm))
 
             down = nn.Module()
             down.block = block
@@ -731,16 +731,16 @@ class Encoder(nn.Module):
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
                                        dropout=dropout)
-        self.mid.patch_embed = PatchEmbed(
-            img_size=512, patch_size=64, in_chans=block_in, embed_dim=512,
-            norm_layer=nn.LayerNorm)
+        # self.mid.patch_embed = PatchEmbed(
+        #     img_size=512, patch_size=64, in_chans=block_in, embed_dim=512,
+        #     norm_layer=nn.LayerNorm)
         self.mid.attn_1 = SwinTransformerBlock(dim=block_in, 
                                                      input_resolution=curr_res, 
                                                      num_heads=1,
-                                                     window_size=8)
-        self.mid.patch_unembed = PatchUnEmbed(
-            img_size=512, patch_size=64, in_chans=block_in, embed_dim=512,
-            norm_layer=nn.LayerNorm)
+                                                     window_size=16)
+        # self.mid.patch_unembed = PatchUnEmbed(
+        #     img_size=512, patch_size=64, in_chans=block_in, embed_dim=512,
+        #     norm_layer=nn.LayerNorm)
         self.mid.block_2 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
@@ -824,12 +824,12 @@ class Encoder(nn.Module):
                         # h = torch.cat([(1-mask_),h], dim=1)
                         # h = torch.cat([mask_,h], dim=1)
                         mask = mask.squeeze(0)
-                        h = self.down[i_level].patch_embed[i_block](h)
+                        # h = self.down[i_level].patch_embed[i_block](h)
                         
                         reverse_mask = 1 - mask
 
                         h = self.down[i_level].attn[i_block](h, h_size, reverse_mask)
-                        h = self.down[i_level].patch_unembed[i_block](h, h_size)
+                        # h = self.down[i_level].patch_unembed[i_block](h, h_size)
                         
                         #h = h[:,0:C,:,:]
                         #print(h.shape)
@@ -864,12 +864,12 @@ class Encoder(nn.Module):
             mask_ = mask.repeat(1, C, 1, 1)
             # h = torch.cat([(1-mask_), h], dim=1)
             # h = torch.cat([mask_,h], dim=1)
-            h = self.mid.patch_embed(h)
+            # h = self.mid.patch_embed(h)
             mask = mask.squeeze(0)
             reverse_mask = 1 - mask
 
             h = self.mid.attn_1(h, h_size, reverse_mask)
-            h = self.mid.patch_unembed(h, h_size)
+            # h = self.mid.patch_unembed(h, h_size)
            # h = h[:,0:C,:,:]
             # h = self.mid.attn_1(h)
             h = self.mid.block_2(h, temb)
@@ -1035,16 +1035,16 @@ class Decoder_Mix(nn.Module):
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
                                        dropout=dropout)
-        self.mid.patch_embed = PatchEmbed(
-            img_size=512, patch_size=64, in_chans=block_in, embed_dim=512,
-            norm_layer=nn.LayerNorm)
+        # self.mid.patch_embed = PatchEmbed(
+        #     img_size=512, patch_size=64, in_chans=block_in, embed_dim=512,
+        #     norm_layer=nn.LayerNorm)
         self.mid.attn_1 = SwinTransformerBlock(dim=block_in, 
                                                      input_resolution=curr_res, 
                                                      num_heads=1,
-                                                     window_size=8)
-        self.mid.patch_unembed = PatchUnEmbed(
-            img_size=512, patch_size=64, in_chans=block_in, embed_dim=512,
-            norm_layer=nn.LayerNorm)
+                                                     window_size=16)
+        # self.mid.patch_unembed = PatchUnEmbed(
+        #     img_size=512, patch_size=64, in_chans=block_in, embed_dim=512,
+        #     norm_layer=nn.LayerNorm)
         self.mid.block_2 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
@@ -1078,13 +1078,13 @@ class Decoder_Mix(nn.Module):
                     attn.append(SwinTransformerBlock(dim=block_in, 
                                                      input_resolution=curr_res, 
                                                      num_heads=1,
-                                                     window_size=8))
-                    patch_embed.append(PatchEmbed(
-            img_size=512, patch_size=64, in_chans=block_in, embed_dim=block_in,
-            norm_layer=nn.LayerNorm))
-                    patch_unembed.append(PatchUnEmbed(
-            img_size=512, patch_size=64, in_chans=block_in, embed_dim=block_in,
-            norm_layer=nn.LayerNorm))
+                                                     window_size=16))
+            #         patch_embed.append(PatchEmbed(
+            # img_size=512, patch_size=64, in_chans=block_in, embed_dim=block_in,
+            # norm_layer=nn.LayerNorm))
+            #         patch_unembed.append(PatchUnEmbed(
+            # img_size=512, patch_size=64, in_chans=block_in, embed_dim=block_in,
+            # norm_layer=nn.LayerNorm))
             up = nn.Module()
             up.block = block
             up.attn = attn
@@ -1173,12 +1173,12 @@ class Decoder_Mix(nn.Module):
             mask_ = mask.repeat(1, C, 1, 1)
             # h = torch.cat([(1-mask_), h], dim=1)
             # h = torch.cat([mask_, h], dim=1)
-            h = self.mid.patch_embed(h)
+            # h = self.mid.patch_embed(h)
             mask = mask.squeeze(0)
             reverse_mask = 1 - mask
 
             h = self.mid.attn_1(h, h_size, reverse_mask)
-            h = self.mid.patch_unembed(h, h_size)
+            # h = self.mid.patch_unembed(h, h_size)
             
             h = self.mid.block_2(h, temb)
 
@@ -1195,13 +1195,13 @@ class Decoder_Mix(nn.Module):
                         mask_ = mask.repeat(1, C, 1, 1)
                         # h = torch.cat([(1-mask_), h], dim=1)
                         # h = torch.cat([mask_,h], dim=1)
-                        h = self.up[i_level].patch_embed[i_block](h)
+                        # h = self.up[i_level].patch_embed[i_block](h)
                         
                         mask = mask.squeeze(0)
                         reverse_mask = 1 - mask
 
                         h = self.up[i_level].attn[i_block](h, h_size, reverse_mask)
-                        h = self.up[i_level].patch_unembed[i_block](h, h_size)
+                        # h = self.up[i_level].patch_unembed[i_block](h, h_size)
                         #h = h[:, 0:C, :,:]
                         # h = self.up[i_level].attn[i_block](h)
                 # if i_level != 0:

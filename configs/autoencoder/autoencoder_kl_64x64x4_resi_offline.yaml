@@ -30,7 +30,7 @@ model:
       - 4
       - 4
       num_res_blocks: 2
-      attn_resolutions: [256,128,64]
+      attn_resolutions: [128,64]
       dropout: 0.0
 
     image_key: 'gt'
@@ -58,12 +58,12 @@ data:
 lightning:
   modelcheckpoint:
     params:
-      every_n_train_steps: 20
+      every_n_train_steps: 50
   callbacks:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 10
+        batch_frequency: 20
         max_images: 4
         increase_log_steps: False
 

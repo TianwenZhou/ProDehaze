@@ -261,14 +261,17 @@ class SwinTransformerBlock(nn.Module):
 
     def forward(self, x, x_size, dcp_mask=None):
         H, W = x_size
-
-        B, L, C = x.shape
+        # print(H)
+        # print(x.shape)
+        B, C, _, _ = x.shape
         
         # assert L == H * W, "input feature has wrong size"
 
         shortcut = x.reshape(B, H * W, C)
+        print(x.shape)
+        x = x.reshape(B, H, W, C)
         x = self.norm1(x)
-        x = x.view(B, H, W, C)
+        
         if dcp_mask is not None:
             dcp_mask = dcp_mask.float()
             dcp_mask_ = dcp_mask.unsqueeze(0)
@@ -316,7 +319,7 @@ class SwinTransformerBlock(nn.Module):
         # FFN
         x = shortcut + self.drop_path(x)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
-        # x = x.reshape(B, C, H, W)
+        x = x.reshape(B, C, H, W)
         return x
 
     def extra_repr(self) -> str:

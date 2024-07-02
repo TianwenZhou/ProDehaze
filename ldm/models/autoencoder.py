@@ -533,8 +533,8 @@ class AutoencoderKLResi(pl.LightningModule):
                 #     param.requires_grad = True
                 elif 'loss.discriminator' in name:
                     param.requires_grad = True
-                elif 'dwt' in name:
-                    param.requires_grad = True
+                # elif 'dwt' in name:
+                #     param.requires_grad = True
                 elif 'attn' in name:
                     param.requires_grad = True
                 elif 'mask_proj' in name:
@@ -971,7 +971,7 @@ class AutoencoderKLResi(pl.LightningModule):
         
         high_freq = high_freq_fea[0]
         
-        reduce_channel = torch.nn.Conv2d(256, 1, kernel_size=1)
+        reduce_channel = torch.nn.Conv2d(512, 1, kernel_size=1)
         device = "cpu"
         high_freq = high_freq.to(device)
         high_freq = reduce_channel(high_freq)
