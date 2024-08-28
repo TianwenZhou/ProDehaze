@@ -43,27 +43,15 @@ data:
     num_workers: 1
     wrap: True
     train:
-      target: basicsr.data.single_image_dataset.SingleImageNPDatasetOnline
+      target: basicsr.data.single_image_dataset.SingleImageNPDataset
       params:
-        gt_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR
-        ref_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_ours/HR_hazy_src
-        config: /home/intern/ztw/ztw/ztw/Methods/LatentDehazing/configs/LatentDehazing/v2-finetune_text_T_512.yaml
-        ckpt_path: src/epoch=000071.ckpt
-        depth_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR_depth
-        use_hflip: true
-        use_rot: true 
+        gt_path: ['/home/intern/ztw/Data/CFW_training_data']
         io_backend:
           type: disk
     validation:
-      target: basicsr.data.single_image_dataset.SingleImageNPDatasetOnline
+      target: basicsr.data.single_image_dataset.SingleImageNPDataset
       params:
-        gt_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR
-        ref_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_ours/HR_hazy_src
-        config: /home/intern/ztw/ztw/ztw/Methods/LatentDehazing/configs/LatentDehazing/v2-finetune_text_T_512.yaml
-        ckpt_path: src/epoch=000071.ckpt
-        depth_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR_depth
-        use_hflip: true
-        use_rot: true 
+        gt_path: ['/home/intern/ztw/Data/CFW_training_data']
         io_backend:
           type: disk
 
