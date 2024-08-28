@@ -1,0 +1,85 @@
+model:
+  base_learning_rate: 5.0e-5
+  target: ldm.models.autoencoder.AutoencoderKLResi
+  params:
+    # for training only
+    ckpt_path: src/epoch=000071.ckpt
+    monitor:  "val/rec_loss"
+    embed_dim: 4
+    fusion_w: 1.0
+    freeze_dec: False
+    synthesis_data:  
+    lossconfig:
+      target: ldm.modules.losses.LPIPSWithDiscriminator
+      params:
+        disc_start: 501
+        kl_weight: 0
+        disc_weight: 0 #used to be 0.025                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+        disc_factor: 1.0
+
+    ddconfig:
+      double_z: true
+      z_channels: 4
+      resolution: 512
+      in_channels: 3
+      out_ch: 3
+      ch: 128
+      ch_mult:
+      - 1
+      - 2
+      - 4
+      - 4
+      num_res_blocks: 2
+      attn_resolutions: [128,64]
+      dropout: 0.0
+
+    image_key: 'gt'
+
+
+data:
+  target: main.DataModuleFromConfig
+  params:
+    batch_size: 1
+    num_workers: 1
+    wrap: True
+    train:
+      target: basicsr.data.single_image_dataset.SingleImageNPDatasetOnline
+      params:
+        gt_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR
+        ref_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_ours/HR_hazy_src
+        config: /home/intern/ztw/ztw/ztw/Methods/LatentDehazing/configs/LatentDehazing/v2-finetune_text_T_512.yaml
+        ckpt_path: src/epoch=000071.ckpt
+        depth_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR_depth
+        use_hflip: true
+        use_rot: true 
+        io_backend:
+          type: disk
+    validation:
+      target: basicsr.data.single_image_dataset.SingleImageNPDatasetOnline
+      params:
+        gt_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR
+        ref_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_ours/HR_hazy_src
+        config: /home/intern/ztw/ztw/ztw/Methods/LatentDehazing/configs/LatentDehazing/v2-finetune_text_T_512.yaml
+        ckpt_path: src/epoch=000071.ckpt
+        depth_path: /home/intern/ztw/ztw/ztw/Data/RESIDE_new/HR_depth
+        use_hflip: true
+        use_rot: true 
+        io_backend:
+          type: disk
+
+lightning:
+  modelcheckpoint:
+    params:
+      every_n_train_steps: 20
+  callbacks:
+    image_logger:
+      target: main.ImageLogger
+      params:
+        batch_frequency: 20
+        max_images: 4
+        increase_log_steps: False
+
+  trainer:
+    benchmark: True
+    max_steps: 800000
+    accumulate_grad_batches: 24
