@@ -45,13 +45,13 @@ data:
     train:
       target: basicsr.data.single_image_dataset.SingleImageNPDataset
       params:
-        gt_path: ['/home/intern/ztw/Data/CFW_training_data']
+        gt_path: ['/home/intern/ztw/ztw/ztw/Data/CFW_training_data']
         io_backend:
           type: disk
     validation:
       target: basicsr.data.single_image_dataset.SingleImageNPDataset
       params:
-        gt_path: ['/home/intern/ztw/Data/CFW_training_data']
+        gt_path: ['/home/intern/ztw/ztw/ztw/Data/CFW_training_data']
         io_backend:
           type: disk
 
