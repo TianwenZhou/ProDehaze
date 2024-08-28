@@ -178,3 +178,11 @@ bash eval.sh
 
 #### Nh-Haze
 <img src="assets/NhHaze.png" alt="show">
+## Latent Dehazing
+
+
+[Tianwen Zhou](https://zhoutianwen.com/)
+
+AI Lab, Sony
+
+This is the offici
