@@ -1,8 +1,7 @@
-## Latent Dehazing
-
+## ProDehaze: prompting diffusion models toward faithful image dehazing
 
 [Tianwen Zhou](https://zhoutianwen.com/)
 
-AI Lab, Sony
+This is the official repo of ProDehaze: prompting diffusion models toward faithful image dehazing
 
-This is the official repo of Latent Dehazing
+Our paper has been accepted to ICME 2025!
