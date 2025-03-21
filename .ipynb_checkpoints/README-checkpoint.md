@@ -9,7 +9,7 @@ News: Our paper has been accepted to ICME 2025!
 
 ## Getting started
 ### Dependency Installation
-```python
+```shell
 # git clone this repository
 git clone https://github.com/TianwenZhou/ProDehaze.git
 cd ProDehaze
@@ -36,3 +36,12 @@ Testing:
 [*Dense-Haze*](https://arxiv.org/abs/1904.02904#:~:text=To%20address%20this%20limitation%2C%20we%20introduce%20Dense-Haze%20-,introducing%20real%20haze%2C%20generated%20by%20professional%20haze%20machines.) /
 [*Nh-Haze*](https://data.vision.ee.ethz.ch/cvl/ntire20/nh-haze/) /
 [*RTTS*](https://sites.google.com/view/reside-dehaze-datasets/reside-standard?authuser=0) 
+
+## Pretrained Model
+
+We prepared the pretrained model at:
+
+| Type                                                        | Weights                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------ |
+| SPR                                                 | [OneDrive](https://1drv.ms/u/s!AsqtTP8eWS-penA8AqrU8c_I4jU) |
+| HCR                                                 | [OneDrive](https://1drv.ms/u/s!AsqtTP8eWS-penA8AqrU8c_I4jU) |
