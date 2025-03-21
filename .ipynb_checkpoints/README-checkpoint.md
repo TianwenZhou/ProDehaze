@@ -1,6 +1,6 @@
 ## ProDehaze: Prompting Diffusion Models Toward Faithful Image Dehazing
 
-<a href="https://arxiv.org/abs/2308.10510">
+[Paper](https://arxiv.org/abs/2308.10510)|[Project Page](https://zhoutianwen.com)
 
 This is the official repo of ProDehaze: Prompting Diffusion Models Toward Faithful Image Dehazing by Pytorch.
 <img src="asset/overview.png" alt="show" style="zoom:90%;" />
