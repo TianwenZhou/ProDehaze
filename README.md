@@ -98,4 +98,4 @@ After this, you can train the HCR with the following command:
 python main.py --train --base configs/autoencoder/autoencoder_kl_64x64x4_resi.yaml --gpus GPU_ID, --name NAME --scale_lr False
 ```
 ## Result
-
+<img src="asset/result.png" alt="show" style="zoom:90%;" />
