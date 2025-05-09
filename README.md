@@ -59,8 +59,8 @@ We prepared the pretrained model at:
 
 | Type                                                        | Weights                                        |
 | ----------------------------------------------------------- | ------------------------------------------------------------ |
-| SPR                                                 | [OneDrive](https://1drv.ms/u/s!AsqtTP8eWS-penA8AqrU8c_I4jU) |
-| HCR                                                 | [OneDrive](https://1drv.ms/u/s!AsqtTP8eWS-penA8AqrU8c_I4jU) |
+| SPR                                                 | [BaiduNetDisk](https://pan.baidu.com/s/1VKd52ogd1Vtg1Li-XuyrRw?pwd=qr48)  |
+| HCR                                                 | [BaiduNetDisk](https://pan.baidu.com/s/1VKd52ogd1Vtg1Li-XuyrRw?pwd=qr48) |
 
 ## Inference Pipeline
 Using the two pre-trained models above, we can conduct sampling conditioned with a hazy input.
