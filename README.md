@@ -63,5 +63,7 @@ We prepared the pretrained model at:
 | HCR                                                 | [OneDrive](https://1drv.ms/u/s!AsqtTP8eWS-penA8AqrU8c_I4jU) |
 
 ## Inference Pipeline
-'''python scripts/sr_val_ddpm_text_T_vqganfin_old.py --config configs/stableSRNew/v2-finetune_text_T_512.yaml --ckpt CKPT --init-img LQ_PATH --outdir OUT_PATH --ddpm_steps 50 --dec_w 1 --seed 42 --n_samples 1 --vqgan_ckpt VQGAN_CKPT --colorfix_type none'''
+```python
+python scripts/sr_val_ddpm_text_T_vqganfin_old.py --config configs/stableSRNew/v2-finetune_text_T_512.yaml --ckpt CKPT --init-img LQ_PATH --outdir OUT_PATH --ddpm_steps 50 --dec_w 1 --seed 42 --n_samples 1 --vqgan_ckpt VQGAN_CKPT --colorfix_type none
+```
 
