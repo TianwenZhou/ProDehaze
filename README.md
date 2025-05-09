@@ -64,13 +64,13 @@ We prepared the pretrained model at:
 
 ## Inference Pipeline
 Using the two pre-trained models above, we can conduct sampling conditioned with a hazy input.
-```python
+```
 python scripts/sr_val_ddpm_text_T_vqganfin_old.py --config configs/LatentDehazing/v2-finetune_text_T_512.yaml --ckpt CKPT --init-img HAZY_PATH --outdir OUT_PATH --ddpm_steps 50 --dec_w 1 --seed 42 --n_samples 1 --vqgan_ckpt VQGAN_CKPT --colorfix_type none
 ```
 ## Training Pipeline
 You should train the SPR and HCR seperately.
 For the SPR, the training can be conducted with the following command. Note that you have to alter the config files corresponding to your real file paths.
-```python
+```
 python main.py --train --base configs/LatentDehazing/v2-finetune_text_T_512.yaml --gpus GPU_ID, --name NAME --scale_lr False
 ```
 As for the HCR, you should first generate the additional training data in its .npy format, with the following command, where the CKPT_PATH should be the SPR you have already trained in the first place.
@@ -94,6 +94,8 @@ CFW_trainingdata/
           └── ...
 ```
 After this, you can train the HCR with the following command:
-```python
+```
 python main.py --train --base configs/autoencoder/autoencoder_kl_64x64x4_resi.yaml --gpus GPU_ID, --name NAME --scale_lr False
 ```
+## Result
+
